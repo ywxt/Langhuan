@@ -1,0 +1,5 @@
+<linker>
+    <assembly fullname="Langhuan.App">
+        <namespace fullname="Langhuan.App.RazorPages" preserve="all"/>
+    </assembly>
+</linker>
