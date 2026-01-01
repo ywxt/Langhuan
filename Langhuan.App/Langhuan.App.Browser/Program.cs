@@ -1,12 +1,12 @@
-﻿using System.Runtime.Versioning;
+namespace Langhuan.App.Browser;
+
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Browser;
-using Langhuan.App;
 
-internal sealed partial class Program
+internal static class Program
 {
-    private static Task Main(string[] args) => BuildAvaloniaApp()
+    private static Task Main() => BuildAvaloniaApp()
         .WithInterFont()
         .StartBrowserAppAsync("out");
 

@@ -1,5 +1,3 @@
-using System.Runtime.CompilerServices;
-
 namespace Langhuan.Core.Fetchers;
 
 public interface IFetcher<in TR, TS>

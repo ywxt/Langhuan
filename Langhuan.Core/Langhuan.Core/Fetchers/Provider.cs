@@ -1,6 +1,6 @@
-using System.Runtime.CompilerServices;
-
 namespace Langhuan.Core.Fetchers;
+
+using System.Runtime.CompilerServices;
 
 public sealed class Provider<TS, TR, TO>(IFetcher<TR, TS> fetcher, IExtractor<TS, TR, TO> extractor)
 {
@@ -31,7 +31,7 @@ public sealed class ListProvider<TS, TR, TO>(IFetcher<TR, TS> fetcher, IListExtr
         RequestedPage<TS> page = new RequestedPage<TS>.FirstPage();
         while (true)
         {
-            var (items, source) = await FetchListAsync(id, page, cancellationToken);
+            var (items, source) = await this.FetchListAsync(id, page, cancellationToken);
             var hasItems = false;
             foreach (var item in items)
             {
@@ -40,7 +40,9 @@ public sealed class ListProvider<TS, TR, TO>(IFetcher<TR, TS> fetcher, IListExtr
             }
 
             if (!hasItems)
+            {
                 yield break;
+            }
 
             var currentPage = page is RequestedPage<TS>.FirstPage ? 0 : ((RequestedPage<TS>.SubsequentPage)page).Page;
             page = new RequestedPage<TS>.SubsequentPage(source, currentPage + 1);

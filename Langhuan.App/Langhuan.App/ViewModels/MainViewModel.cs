@@ -1,6 +1,6 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
-
 namespace Langhuan.App.ViewModels;
+
+using CommunityToolkit.Mvvm.ComponentModel;
 
 public partial class MainViewModel : ViewModelBase
 {

@@ -1,0 +1,9 @@
+<Project>
+    <PropertyGroup>
+        <EnableNETAnalyzers>true</EnableNETAnalyzers>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <WarningsAsErrors>All;IDE0005;IDE0071;IDE0065;IDE0066</WarningsAsErrors>
+        <AnalysisLevel>latest</AnalysisLevel>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+</Project>

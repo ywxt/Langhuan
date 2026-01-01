@@ -1,11 +1,11 @@
-using Avalonia.Controls;
-
 namespace Langhuan.App.Views;
+
+using Avalonia.Controls;
 
 public partial class MainView : UserControl
 {
     public MainView()
     {
-        InitializeComponent();
+        this.InitializeComponent();
     }
 }

@@ -1,9 +1,9 @@
-﻿using Android.App;
-using Android.Content.PM;
+namespace Langhuan.App.Android;
+
+using global::Android.App;
+using global::Android.Content.PM;
 using Avalonia;
 using Avalonia.Android;
-
-namespace Langhuan.App.Android;
 
 [Activity(
     Label = "Langhuan.App.Android",

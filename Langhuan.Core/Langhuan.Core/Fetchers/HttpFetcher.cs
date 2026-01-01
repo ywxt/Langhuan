@@ -1,39 +1,45 @@
-using System.Net.Http.Headers;
-
 namespace Langhuan.Core.Fetchers;
+
+using System.Net.Http.Headers;
 
 public record Content(string Type, byte[] Data);
 
-public record Request(Uri Uri, HttpMethod Method, Dictionary<string, string> Headers, Content? Content)
+public record Request(Uri Uri, HttpMethod Method, IReadOnlyDictionary<string, string> Headers, Content? Content)
 {
-    public static Request FromJson(Uri uri, HttpMethod method, Dictionary<string, string> headers, string json)
-    {
-        return new Request(uri, method, headers,
-            new Content("application/json", System.Text.Encoding.UTF8.GetBytes(json)));
-    }
+    public static Request
+        FromJson(Uri uri, HttpMethod method, IReadOnlyDictionary<string, string> headers, string json) => new(uri,
+        method, headers,
+        new Content("application/json", System.Text.Encoding.UTF8.GetBytes(json)));
 
     public HttpRequestMessage ToHttpRequestMessage()
     {
-        var message = new HttpRequestMessage(Method, Uri);
-        foreach (var header in Headers)
+        var message = new HttpRequestMessage(this.Method, this.Uri);
+        foreach (var header in this.Headers)
         {
-            if (header.Key.StartsWith("Content-")) continue;
+            if (header.Key.StartsWith("Content-"))
+            {
+                continue;
+            }
+
             message.Headers.Add(header.Key, header.Value);
         }
 
-        if (Content is null or { Data.Length: <= 0 }) return message;
+        if (this.Content is null or { Data.Length: <= 0 })
+        {
+            return message;
+        }
 
-        message.Content = new ByteArrayContent(Content.Data);
-        message.Content.Headers.ContentType = new MediaTypeHeaderValue(Content.Type);
+        message.Content = new ByteArrayContent(this.Content.Data);
+        message.Content.Headers.ContentType = new MediaTypeHeaderValue(this.Content.Type);
 
         return message;
     }
 }
 
-public record Response(int StatusCode, Dictionary<string, string> Headers, byte[] Body)
+public record Response(int StatusCode, IReadOnlyDictionary<string, string> Headers, byte[] Body)
 {
-    public string BodyToString() => BodyToString(System.Text.Encoding.UTF8);
-    public string BodyToString(System.Text.Encoding encoding) => encoding.GetString(Body);
+    public string BodyToString() => this.BodyToString(System.Text.Encoding.UTF8);
+    public string BodyToString(System.Text.Encoding encoding) => encoding.GetString(this.Body);
 
     public static Response FromHttpResponseMessage(HttpResponseMessage message, byte[] body)
     {
