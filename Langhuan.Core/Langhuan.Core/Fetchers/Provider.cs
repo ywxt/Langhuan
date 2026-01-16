@@ -1,13 +1,19 @@
 namespace Langhuan.Core.Fetchers;
 
 using System.Runtime.CompilerServices;
+using CSharpFunctionalExtensions;
 
 public sealed class Provider<TS, TR, TO>(IFetcher<TR, TS> fetcher, IExtractor<TS, TR, TO> extractor)
 {
-    public async Task<TO> FetchAsync(string id, CancellationToken cancellationToken = default)
+    public async Task<Result<TO, LanghuanError>> FetchAsync(string id, CancellationToken cancellationToken = default)
     {
         var request = await extractor.RequestAsync(id, cancellationToken);
-        var source = await fetcher.FetchAsync(request, cancellationToken);
+        if (request.IsFailure)
+        {
+            return request.ConvertFailure<TO>();
+        }
+
+        var source = await fetcher.FetchAsync(request.Value, cancellationToken);
         var item = await extractor.ExtractAsync(source, id, cancellationToken);
         return item;
     }
@@ -15,25 +21,60 @@ public sealed class Provider<TS, TR, TO>(IFetcher<TR, TS> fetcher, IExtractor<TS
 
 public sealed class ListProvider<TS, TR, TO>(IFetcher<TR, TS> fetcher, IListExtractor<TS, TR, TO> extractor)
 {
-    public async Task<(IEnumerable<TO> items, TS source)> FetchListAsync(string id, RequestedPage<TS> page,
-        CancellationToken cancellationToken = default)
+    public sealed class Source
     {
-        var request = await extractor.NextRequestAsync(id, page, cancellationToken);
-        var source = await fetcher.FetchAsync(request, cancellationToken);
-        var currentPage = page is RequestedPage<TS>.FirstPage ? 0 : ((RequestedPage<TS>.SubsequentPage)page).Page;
-        var items = await extractor.ExtractListAsync(id, source, currentPage, cancellationToken);
-        return (items, source);
+        internal int Page { get; }
+        internal TS SourceData { get; }
+
+        internal Source(int page, TS sourceData)
+        {
+            this.Page = page;
+            this.SourceData = sourceData;
+        }
     }
 
-    public async IAsyncEnumerable<TO> FetchAllAsync(string id,
+    public async Task<Result<Source, LanghuanError>> FetchSourceAsync(string id, RequestedPage<TS> page,
+        CancellationToken cancellationToken = default)
+    {
+        var (_, isFailure, request, error) = await extractor.NextRequestAsync(id, page, cancellationToken);
+        if (isFailure)
+        {
+            return error;
+        }
+
+        var currentPage = page is RequestedPage<TS>.FirstPage ? 0 : ((RequestedPage<TS>.SubsequentPage)page).Page;
+        var source = await fetcher.FetchAsync(request, cancellationToken);
+        return new Source(currentPage, source);
+    }
+
+    public Task<Result<IAsyncEnumerable<Result<TO, LanghuanError>>, LanghuanError>> FetchListAsync(string id,
+        Source source,
+        CancellationToken cancellationToken = default) =>
+        extractor.ExtractListAsync(id, source.SourceData, source.Page, cancellationToken);
+
+    public async IAsyncEnumerable<Result<TO, LanghuanError>> FetchAllAsync(string id,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         RequestedPage<TS> page = new RequestedPage<TS>.FirstPage();
+        var pageNum = 0;
         while (true)
         {
-            var (items, source) = await this.FetchListAsync(id, page, cancellationToken);
+            var (_, isFailure, request, error) = await this.FetchSourceAsync(id, page, cancellationToken);
+            if (isFailure)
+            {
+                yield return error;
+                yield break;
+            }
+
             var hasItems = false;
-            foreach (var item in items)
+            var (_, listFailure, list, listError) = await this.FetchListAsync(id, request, cancellationToken);
+            if (listFailure)
+            {
+                yield return listError;
+                yield break;
+            }
+
+            await foreach (var item in list.WithCancellation(cancellationToken))
             {
                 hasItems = true;
                 yield return item;
@@ -44,8 +85,7 @@ public sealed class ListProvider<TS, TR, TO>(IFetcher<TR, TS> fetcher, IListExtr
                 yield break;
             }
 
-            var currentPage = page is RequestedPage<TS>.FirstPage ? 0 : ((RequestedPage<TS>.SubsequentPage)page).Page;
-            page = new RequestedPage<TS>.SubsequentPage(source, currentPage + 1);
+            page = new RequestedPage<TS>.SubsequentPage(request.SourceData, ++pageNum);
         }
     }
 }

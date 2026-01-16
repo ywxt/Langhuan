@@ -8,4 +8,9 @@
         <InvariantGlobalization>true</InvariantGlobalization>
     </PropertyGroup>
 
+    <ItemGroup>
+      <PackageReference Include="CSharpFunctionalExtensions" />
+      <PackageReference Include="LuaCSharp" />
+    </ItemGroup>
+
 </Project>

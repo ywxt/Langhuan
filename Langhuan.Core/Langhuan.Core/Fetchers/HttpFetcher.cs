@@ -1,15 +1,62 @@
 namespace Langhuan.Core.Fetchers;
 
+using System.Diagnostics;
 using System.Net.Http.Headers;
+using CSharpFunctionalExtensions;
+using Lua;
 
-public record Content(string Type, byte[] Data);
-
-public record Request(Uri Uri, HttpMethod Method, IReadOnlyDictionary<string, string> Headers, Content? Content)
+public sealed record Content(string Type, byte[] Data) : IFromLua<Content>
 {
-    public static Request
-        FromJson(Uri uri, HttpMethod method, IReadOnlyDictionary<string, string> headers, string json) => new(uri,
-        method, headers,
-        new Content("application/json", System.Text.Encoding.UTF8.GetBytes(json)));
+    public static ValueTask<Result<Content, LanghuanError.LuaError>> FromLuaAsync(LuaState lua, LuaValue value,
+        CancellationToken cancellationToken = default)
+    {
+        var table = value.TableToDictionary();
+        if (table is null)
+        {
+            return ValueTask.FromResult(Result.Failure<Content, LanghuanError.LuaError>(new LanghuanError.LuaError(
+                $"Expected table for Content, get {value.Type}")));
+        }
+
+        if (!table.TryGetValue("type", out var typeValue))
+        {
+            return ValueTask.FromResult(Result.Failure<Content, LanghuanError.LuaError>(new LanghuanError.LuaError(
+                $"Cannot get 'type' field in Content table")));
+        }
+
+        var type = typeValue.ReadString();
+        if (type is null)
+        {
+            return ValueTask.FromResult(Result.Failure<Content, LanghuanError.LuaError>(new LanghuanError.LuaError(
+                $"'type' field in Content table is not a string")));
+        }
+
+        if (!table.TryGetValue("data", out var dataValue))
+        {
+            return ValueTask.FromResult(Result.Failure<Content, LanghuanError.LuaError>(new LanghuanError.LuaError(
+                $"Cannot get 'data' field in Content table")));
+        }
+
+        var data = dataValue.AsByteArray();
+        if (data is null)
+        {
+            return ValueTask.FromResult(Result.Failure<Content, LanghuanError.LuaError>(new LanghuanError.LuaError(
+                $"'data' field in Content table is not a byte array")));
+        }
+
+        var content = new Content(type, data);
+        return ValueTask.FromResult(Result.Success<Content, LanghuanError.LuaError>(content));
+    }
+}
+
+public sealed record HttpRequest(
+    Uri Uri,
+    HttpMethod Method,
+    IReadOnlyDictionary<string, string> Headers,
+    Content? Content) : IFromLua<HttpRequest>
+{
+    public static HttpRequest FromJson(Uri uri, HttpMethod method, IReadOnlyDictionary<string, string> headers,
+        string json) =>
+        new(uri, method, headers, new Content("application/json", System.Text.Encoding.UTF8.GetBytes(json)));
 
     public HttpRequestMessage ToHttpRequestMessage()
     {
@@ -34,25 +81,108 @@ public record Request(Uri Uri, HttpMethod Method, IReadOnlyDictionary<string, st
 
         return message;
     }
+
+    public static async ValueTask<Result<HttpRequest, LanghuanError.LuaError>> FromLuaAsync(LuaState lua,
+        LuaValue value,
+        CancellationToken cancellationToken = default) =>
+        value.Type switch
+        {
+            LuaValueType.String => FromLuaStringAsync(value),
+            LuaValueType.Table => await FromLuaTable(lua, value, cancellationToken),
+            _ => Result.Failure<HttpRequest, LanghuanError.LuaError>(new LanghuanError.LuaError(
+                $"Expected string or table for HttpRequest, get {value.Type}"))
+        };
+
+    private static Result<HttpRequest, LanghuanError.LuaError> FromLuaStringAsync(LuaValue value)
+    {
+        var uriString = value.Read<string>();
+        try
+        {
+            var uri = new Uri(uriString);
+            return new HttpRequest(uri, HttpMethod.Get, new Dictionary<string, string>(), null);
+        }
+        catch (UriFormatException)
+        {
+            return new LanghuanError.LuaError($"Invalid URI: {uriString} when creating HttpRequest from string");
+        }
+    }
+
+    private static async ValueTask<Result<HttpRequest, LanghuanError.LuaError>> FromLuaTable(LuaState lua,
+        LuaValue value,
+        CancellationToken cancellationToken = default)
+    {
+        var table = value.TableToDictionary();
+
+        Debug.Assert(table != null, nameof(table) + " != null");
+        if (!table.TryGetValue("uri", out var uriString))
+        {
+            return new LanghuanError.LuaError($"Cannot get 'uri' field in HttpRequest table");
+        }
+
+        var uriStr = uriString.ReadString();
+        if (uriStr is null)
+        {
+            return new LanghuanError.LuaError($"'uri' field in HttpRequest table is not a string");
+        }
+
+        try
+        {
+            var uri = new Uri(uriStr);
+            var method = table.TryGetValue("method", out var methodValue)
+                ? new HttpMethod(methodValue.ReadString() ?? "GET")
+                : HttpMethod.Get;
+            if (!table.TryGetValue("headers", out var headersValue))
+            {
+                return new LanghuanError.LuaError("'headers' field in HttpRequest table is not a table");
+            }
+
+            var headers = headersValue.TableToStringDictionary() ?? new Dictionary<string, string>();
+
+            if (!table.TryGetValue("content", out var contentValue))
+            {
+                return new HttpRequest(uri, method, headers, null);
+            }
+
+            return (await Content.FromLuaAsync(lua, contentValue, cancellationToken)).Map(content =>
+                new HttpRequest(uri, method, headers, content));
+        }
+        catch (UriFormatException)
+        {
+            return new LanghuanError.LuaError($"Invalid URI: {uriString} when creating HttpRequest from table");
+        }
+    }
 }
 
-public record Response(int StatusCode, IReadOnlyDictionary<string, string> Headers, byte[] Body)
+public sealed record HttpResponse(int StatusCode, IReadOnlyDictionary<string, string> Headers, byte[] Body) : IToLua
 {
-    public string BodyToString() => this.BodyToString(System.Text.Encoding.UTF8);
-    public string BodyToString(System.Text.Encoding encoding) => encoding.GetString(this.Body);
-
-    public static Response FromHttpResponseMessage(HttpResponseMessage message, byte[] body)
+    public static HttpResponse FromHttpResponseMessage(HttpResponseMessage message, byte[] body)
     {
-        var headers =
-            message.Headers.ToDictionary(header => header.Key, header => string.Join(", ", header.Value));
-
+        var headers = message.Headers.ToDictionary(header => header.Key, header => string.Join(", ", header.Value));
         var contentHeaders = message.Content.Headers.Select(header => (header.Key, string.Join(", ", header.Value)));
         foreach (var (key, value) in contentHeaders)
         {
             headers[key] = value;
         }
 
-        return new Response((int)message.StatusCode, headers, body);
+        return new HttpResponse((int)message.StatusCode, headers, body);
+    }
+
+    public ValueTask<Result<LuaValue, LanghuanError.LuaError>> ToLuaAsync(LuaState lua,
+        CancellationToken cancellationToken = default)
+    {
+        var headersTable = new LuaTable();
+        foreach (var (key, val) in this.Headers)
+        {
+            headersTable[key] = val;
+        }
+
+        var table = new LuaTable
+        {
+            ["status_code"] = this.StatusCode,
+            ["headers"] = headersTable,
+            ["body"] = new ByteArray(this.Body),
+        };
+        return ValueTask.FromResult(Result.Success<LuaValue, LanghuanError.LuaError>((LuaValue)table));
     }
 }
 
@@ -60,14 +190,14 @@ public class HttpFetcher(
     // This HttpClient should be configured and managed outside.
     // Do not dispose it here.
     HttpClient http
-) : IFetcher<Request, Response>
+) : IFetcher<HttpRequest, HttpResponse>
 {
-    public async Task<Response> FetchAsync(Request request, CancellationToken cancellationToken = default)
+    public async Task<HttpResponse> FetchAsync(HttpRequest httpRequest, CancellationToken cancellationToken = default)
     {
-        var httpRequest = request.ToHttpRequestMessage();
-        var httpResponse = await http.SendAsync(httpRequest, cancellationToken);
+        var request = httpRequest.ToHttpRequestMessage();
+        var httpResponse = await http.SendAsync(request, cancellationToken);
         var body = await httpResponse.Content.ReadAsByteArrayAsync(cancellationToken);
-        var response = Response.FromHttpResponseMessage(httpResponse, body);
+        var response = HttpResponse.FromHttpResponseMessage(httpResponse, body);
         return response;
     }
 }
