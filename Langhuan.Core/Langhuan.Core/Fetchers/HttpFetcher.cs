@@ -1,6 +1,5 @@
 namespace Langhuan.Core.Fetchers;
 
-using System.Diagnostics;
 using System.Net.Http.Headers;
 using CSharpFunctionalExtensions;
 using Lua;
