@@ -6,6 +6,7 @@
         <Project Path="Langhuan.App/Langhuan.App/Langhuan.App.csproj"/>
     </Folder>
     <Folder Name="/Core/">
+        <Project Path="Langhuan.Core/Langhuan.Core.Test/Langhuan.Core.Test.csproj"/>
         <Project Path="Langhuan.Core/Langhuan.Core/Langhuan.Core.csproj"/>
     </Folder>
     <Folder Name="/ProjectConfig/">

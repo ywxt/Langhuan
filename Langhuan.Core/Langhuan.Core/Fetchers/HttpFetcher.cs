@@ -10,37 +10,22 @@ public sealed record Content(string Type, byte[] Data) : IFromLua<Content>
     public static ValueTask<Result<Content, LanghuanError.LuaError>> FromLuaAsync(LuaState lua, LuaValue value,
         CancellationToken cancellationToken = default)
     {
-        var table = value.TableToDictionary();
-        if (table is null)
+        if (!value.TryRead<LuaTable>(out var table))
         {
             return ValueTask.FromResult(Result.Failure<Content, LanghuanError.LuaError>(new LanghuanError.LuaError(
                 $"Expected table for Content, get {value.Type}")));
         }
 
-        if (!table.TryGetValue("type", out var typeValue))
+        if (table.ReadStringField("type", out var type))
         {
             return ValueTask.FromResult(Result.Failure<Content, LanghuanError.LuaError>(new LanghuanError.LuaError(
-                $"Cannot get 'type' field in Content table")));
+                $"'type' field in Content table is missing or not a string")));
         }
 
-        var type = typeValue.ReadString();
-        if (type is null)
+        if (table.ReadByteArrayField("data", out var data))
         {
             return ValueTask.FromResult(Result.Failure<Content, LanghuanError.LuaError>(new LanghuanError.LuaError(
-                $"'type' field in Content table is not a string")));
-        }
-
-        if (!table.TryGetValue("data", out var dataValue))
-        {
-            return ValueTask.FromResult(Result.Failure<Content, LanghuanError.LuaError>(new LanghuanError.LuaError(
-                $"Cannot get 'data' field in Content table")));
-        }
-
-        var data = dataValue.AsByteArray();
-        if (data is null)
-        {
-            return ValueTask.FromResult(Result.Failure<Content, LanghuanError.LuaError>(new LanghuanError.LuaError(
-                $"'data' field in Content table is not a byte array")));
+                $"'data' field in Content table is missing or not a byte array")));
         }
 
         var content = new Content(type, data);
@@ -111,25 +96,22 @@ public sealed record HttpRequest(
         LuaValue value,
         CancellationToken cancellationToken = default)
     {
-        var table = value.TableToDictionary();
-
-        Debug.Assert(table != null, nameof(table) + " != null");
-        if (!table.TryGetValue("uri", out var uriString))
+        if (!value.TryRead<LuaTable>(out var table))
         {
-            return new LanghuanError.LuaError($"Cannot get 'uri' field in HttpRequest table");
+            return new LanghuanError.LuaError(
+                $"Expected table for HttpRequest, get {value.Type}");
         }
 
-        var uriStr = uriString.ReadString();
-        if (uriStr is null)
+        if (table.ReadStringField("url", out var uriStr))
         {
-            return new LanghuanError.LuaError($"'uri' field in HttpRequest table is not a string");
+            return new LanghuanError.LuaError("'url' field in HttpRequest table is missing or not a string");
         }
 
         try
         {
             var uri = new Uri(uriStr);
-            var method = table.TryGetValue("method", out var methodValue)
-                ? new HttpMethod(methodValue.ReadString() ?? "GET")
+            var method = table.ReadStringField("method", out var methodValue)
+                ? new HttpMethod(methodValue)
                 : HttpMethod.Get;
             if (!table.TryGetValue("headers", out var headersValue))
             {
@@ -148,7 +130,7 @@ public sealed record HttpRequest(
         }
         catch (UriFormatException)
         {
-            return new LanghuanError.LuaError($"Invalid URI: {uriString} when creating HttpRequest from table");
+            return new LanghuanError.LuaError($"Invalid URI: {uriStr} when creating HttpRequest from table");
         }
     }
 }

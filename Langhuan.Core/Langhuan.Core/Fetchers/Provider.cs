@@ -42,7 +42,7 @@ public sealed class ListProvider<TS, TR, TO>(IFetcher<TR, TS> fetcher, IListExtr
             return error;
         }
 
-        var currentPage = page is RequestedPage<TS>.FirstPage ? 0 : ((RequestedPage<TS>.SubsequentPage)page).Page;
+        var currentPage = page.PageNumber;
         var source = await fetcher.FetchAsync(request, cancellationToken);
         return new Source(currentPage, source);
     }
@@ -56,7 +56,6 @@ public sealed class ListProvider<TS, TR, TO>(IFetcher<TR, TS> fetcher, IListExtr
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         RequestedPage<TS> page = new RequestedPage<TS>.FirstPage();
-        var pageNum = 0;
         while (true)
         {
             var (_, isFailure, request, error) = await this.FetchSourceAsync(id, page, cancellationToken);
@@ -85,7 +84,7 @@ public sealed class ListProvider<TS, TR, TO>(IFetcher<TR, TS> fetcher, IListExtr
                 yield break;
             }
 
-            page = new RequestedPage<TS>.SubsequentPage(request.SourceData, ++pageNum);
+            page = page.NextRequestedPage(request.SourceData);
         }
     }
 }

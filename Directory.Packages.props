@@ -1,10 +1,16 @@
 <Project>
-  <!-- https://learn.microsoft.com/en-us/nuget/consume-packages/central-package-management -->
-  <PropertyGroup>
-    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageVersion Include="CSharpFunctionalExtensions" Version="3.6.0" />
-    <PackageVersion Include="LuaCSharp" Version="0.5.1" />
-  </ItemGroup>
+    <!-- https://learn.microsoft.com/en-us/nuget/consume-packages/central-package-management -->
+    <PropertyGroup>
+        <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageVersion Include="CSharpFunctionalExtensions" Version="3.6.0"/>
+        <PackageVersion Include="LuaCSharp" Version="0.5.1"/>
+    </ItemGroup>
+    <ItemGroup>
+        <PackageVersion Include="coverlet.collector" Version="6.0.4"/>
+        <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.0"/>
+        <PackageVersion Include="xunit" Version="2.9.3"/>
+        <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4"/>
+    </ItemGroup>
 </Project>

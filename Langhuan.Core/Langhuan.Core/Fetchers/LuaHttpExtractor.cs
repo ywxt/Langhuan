@@ -55,7 +55,7 @@ public sealed class LuaHttpListExtractor<T>(
                 args = new LuaValue[] { id };
                 break;
             case RequestedPage<HttpResponse>.SubsequentPage subsequentPage:
-                var sourceFin = await subsequentPage.CurrentSource.ToLuaAsync(lua, cancellationToken);
+                var sourceFin = await subsequentPage.PreviousSource.ToLuaAsync(lua, cancellationToken);
                 if (sourceFin.IsFailure)
                 {
                     return sourceFin.MapError(LanghuanError (error) => error).ConvertFailure<HttpRequest>();

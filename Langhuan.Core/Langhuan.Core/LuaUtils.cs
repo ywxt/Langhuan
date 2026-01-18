@@ -7,24 +7,6 @@ public static class LuaUtils
 {
     extension(LuaValue value)
     {
-        public string? ReadString() => value.TryRead<string>(out var str) ? str : null;
-
-        public IReadOnlyDictionary<string, LuaValue>? TableToDictionary()
-        {
-            if (!value.TryRead<LuaTable>(out var table))
-            {
-                return null;
-            }
-
-            if (table.Any(pair => pair.Key.Type is not LuaValueType.String))
-            {
-                return null;
-            }
-
-            var keyValuePairs = table.ToDictionary(pair => pair.Key.Read<string>(), pair => pair.Value);
-            return keyValuePairs;
-        }
-
         public IReadOnlyDictionary<string, string>? TableToStringDictionary()
         {
             if (!value.TryRead<LuaTable>(out var table))
@@ -55,11 +37,30 @@ public static class LuaUtils
             {
                 array[i] = table[i + 1];
             }
+
             return array;
         }
 
+        public bool AsByteArray(out byte[] array)
+        {
+            array = [];
+            return value.TryRead<ByteArray>(out var byteArray) && (array = byteArray.Data) != null;
+        }
+    }
 
-        public byte[]? AsByteArray() => !value.TryRead<ByteArray>(out var byteArray) ? null : byteArray.Data;
+    extension(LuaTable table)
+    {
+        public bool ReadStringField(string fieldName, out string value)
+        {
+            value = string.Empty;
+            return table.TryGetValue(fieldName, out var fieldValue) && fieldValue.TryRead(out value);
+        }
+
+        public bool ReadByteArrayField(string fieldName, out byte[] value)
+        {
+            value = [];
+            return table.TryGetValue(fieldName, out var fieldValue) && fieldValue.AsByteArray(out value);
+        }
     }
 }
 
