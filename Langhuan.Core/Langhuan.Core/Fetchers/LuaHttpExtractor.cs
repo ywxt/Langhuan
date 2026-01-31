@@ -7,7 +7,7 @@ using Lua;
 public sealed class LuaHttpExtractor<T>(LuaState lua, LuaFunction request, LuaFunction extract)
     : IExtractor<HttpResponse, HttpRequest, T> where T : IFromLua<T>
 {
-    public async Task<Result<HttpRequest, LanghuanError>> RequestAsync(string id,
+    public async ValueTask<Result<HttpRequest, LanghuanError>> RequestAsync(string id,
         CancellationToken cancellationToken = default)
     {
         var luaRequest = await lua.CallAsync(request, [id], cancellationToken);
@@ -17,14 +17,14 @@ public sealed class LuaHttpExtractor<T>(LuaState lua, LuaFunction request, LuaFu
                 $"Expected 1 return value from request function, get {luaRequest.Length}");
         }
 
-        return (await HttpRequest.FromLuaAsync(lua, luaRequest[0], cancellationToken)).MapError(LanghuanError (error) =>
+        return HttpRequest.FromLua(lua, luaRequest[0], cancellationToken).MapError(LanghuanError (error) =>
             error);
     }
 
-    public async Task<Result<T, LanghuanError>> ExtractAsync(HttpResponse source, string id,
+    public async ValueTask<Result<T, LanghuanError>> ExtractAsync(HttpResponse source, string id,
         CancellationToken cancellationToken = default)
     {
-        var sourceFin = await source.ToLuaAsync(lua, cancellationToken);
+        var sourceFin = source.ToLua(lua, cancellationToken);
         return (await sourceFin.Bind(async value =>
         {
             ReadOnlySpan<LuaValue> args = [value, (LuaValue)id];
@@ -35,7 +35,7 @@ public sealed class LuaHttpExtractor<T>(LuaState lua, LuaFunction request, LuaFu
                     $"Expected 1 return value from extract function, get {result.Length}");
             }
 
-            return await T.FromLuaAsync(lua, result[0], cancellationToken);
+            return T.FromLua(lua, result[0], cancellationToken);
         })).MapError(LanghuanError (error) => error);
     }
 }
@@ -45,7 +45,8 @@ public sealed class LuaHttpListExtractor<T>(
     LuaFunction nextRequest,
     LuaFunction extractList) : IListExtractor<HttpResponse, HttpRequest, T> where T : IFromLua<T>
 {
-    public async Task<Result<HttpRequest, LanghuanError>> NextRequestAsync(string id, RequestedPage<HttpResponse> page,
+    public async ValueTask<Result<HttpRequest, LanghuanError>> NextRequestAsync(string id,
+        RequestedPage<HttpResponse> page,
         CancellationToken cancellationToken = default)
     {
         ReadOnlySpan<LuaValue> args;
@@ -55,7 +56,7 @@ public sealed class LuaHttpListExtractor<T>(
                 args = new LuaValue[] { id };
                 break;
             case RequestedPage<HttpResponse>.SubsequentPage subsequentPage:
-                var sourceFin = await subsequentPage.PreviousSource.ToLuaAsync(lua, cancellationToken);
+                var sourceFin = subsequentPage.PreviousSource.ToLua(lua, cancellationToken);
                 if (sourceFin.IsFailure)
                 {
                     return sourceFin.MapError(LanghuanError (error) => error).ConvertFailure<HttpRequest>();
@@ -74,16 +75,16 @@ public sealed class LuaHttpListExtractor<T>(
                 $"Expected 1 return value from nextRequest function, get {luaRequest.Length}");
         }
 
-        return (await HttpRequest.FromLuaAsync(lua, luaRequest[1], cancellationToken)).MapError(LanghuanError (error) =>
+        return HttpRequest.FromLua(lua, luaRequest[1], cancellationToken).MapError(LanghuanError (error) =>
             error);
     }
 
-    public async Task<Result<IAsyncEnumerable<Result<T, LanghuanError>>, LanghuanError>> ExtractListAsync(string id,
+    public async ValueTask<Result<IEnumerable<Result<T, LanghuanError>>, LanghuanError>> ExtractListAsync(string id,
         HttpResponse httpResponse,
         int page,
         CancellationToken cancellationToken = default)
     {
-        var (_, isFailure, source, luaError) = await httpResponse.ToLuaAsync(lua, cancellationToken);
+        var (_, isFailure, source, luaError) = httpResponse.ToLua(lua, cancellationToken);
         if (isFailure)
         {
             return luaError;
@@ -104,18 +105,11 @@ public sealed class LuaHttpListExtractor<T>(
                 $"Expected array return value from extractList function, get {result[0]}");
         }
 
-        return Result.Success<IAsyncEnumerable<Result<T, LanghuanError>>, LanghuanError>(
-            ExtractListFromLuaAsync(lua, listTable, cancellationToken));
+        return Result.Success<IEnumerable<Result<T, LanghuanError>>, LanghuanError>(ExtractListFromLua(lua, listTable));
     }
 
-    private static async IAsyncEnumerable<Result<T, LanghuanError>> ExtractListFromLuaAsync(LuaState lua,
-        LuaValue[] items,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        foreach (var item in items)
-        {
-            var luaItemResult = await T.FromLuaAsync(lua, item, cancellationToken);
-            yield return luaItemResult.MapError(LanghuanError (error) => error);
-        }
-    }
+    private static IEnumerable<Result<T, LanghuanError>> ExtractListFromLua(LuaState lua,
+        LuaValue[] items) =>
+        items.Select(item => T.FromLua(lua, item))
+            .Select(luaItemResult => luaItemResult.MapError(LanghuanError (error) => error));
 }

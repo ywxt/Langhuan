@@ -6,29 +6,29 @@ using Lua;
 
 public sealed record Content(string Type, byte[] Data) : IFromLua<Content>
 {
-    public static ValueTask<Result<Content, LanghuanError.LuaError>> FromLuaAsync(LuaState lua, LuaValue value,
+    public static Result<Content, LanghuanError.LuaError> FromLua(LuaState lua, LuaValue value,
         CancellationToken cancellationToken = default)
     {
         if (!value.TryRead<LuaTable>(out var table))
         {
-            return ValueTask.FromResult(Result.Failure<Content, LanghuanError.LuaError>(new LanghuanError.LuaError(
-                $"Expected table for Content, get {value.Type}")));
+            return Result.Failure<Content, LanghuanError.LuaError>(new LanghuanError.LuaError(
+                $"Expected table for Content, get {value.Type}"));
         }
 
         if (table.ReadStringField("type", out var type))
         {
-            return ValueTask.FromResult(Result.Failure<Content, LanghuanError.LuaError>(new LanghuanError.LuaError(
-                $"'type' field in Content table is missing or not a string")));
+            return Result.Failure<Content, LanghuanError.LuaError>(new LanghuanError.LuaError(
+                $"'type' field in Content table is missing or not a string"));
         }
 
         if (table.ReadByteArrayField("data", out var data))
         {
-            return ValueTask.FromResult(Result.Failure<Content, LanghuanError.LuaError>(new LanghuanError.LuaError(
-                $"'data' field in Content table is missing or not a byte array")));
+            return Result.Failure<Content, LanghuanError.LuaError>(new LanghuanError.LuaError(
+                $"'data' field in Content table is missing or not a byte array"));
         }
 
         var content = new Content(type, data);
-        return ValueTask.FromResult(Result.Success<Content, LanghuanError.LuaError>(content));
+        return Result.Success<Content, LanghuanError.LuaError>(content);
     }
 }
 
@@ -66,18 +66,18 @@ public sealed record HttpRequest(
         return message;
     }
 
-    public static async ValueTask<Result<HttpRequest, LanghuanError.LuaError>> FromLuaAsync(LuaState lua,
+    public static Result<HttpRequest, LanghuanError.LuaError> FromLua(LuaState lua,
         LuaValue value,
         CancellationToken cancellationToken = default) =>
         value.Type switch
         {
-            LuaValueType.String => FromLuaStringAsync(value),
-            LuaValueType.Table => await FromLuaTable(lua, value, cancellationToken),
+            LuaValueType.String => FromLuaString(value),
+            LuaValueType.Table => FromLuaTable(lua, value, cancellationToken),
             _ => Result.Failure<HttpRequest, LanghuanError.LuaError>(new LanghuanError.LuaError(
                 $"Expected string or table for HttpRequest, get {value.Type}"))
         };
 
-    private static Result<HttpRequest, LanghuanError.LuaError> FromLuaStringAsync(LuaValue value)
+    private static Result<HttpRequest, LanghuanError.LuaError> FromLuaString(LuaValue value)
     {
         var uriString = value.Read<string>();
         try
@@ -91,7 +91,7 @@ public sealed record HttpRequest(
         }
     }
 
-    private static async ValueTask<Result<HttpRequest, LanghuanError.LuaError>> FromLuaTable(LuaState lua,
+    private static Result<HttpRequest, LanghuanError.LuaError> FromLuaTable(LuaState lua,
         LuaValue value,
         CancellationToken cancellationToken = default)
     {
@@ -124,7 +124,7 @@ public sealed record HttpRequest(
                 return new HttpRequest(uri, method, headers, null);
             }
 
-            return (await Content.FromLuaAsync(lua, contentValue, cancellationToken)).Map(content =>
+            return (Content.FromLua(lua, contentValue, cancellationToken)).Map(content =>
                 new HttpRequest(uri, method, headers, content));
         }
         catch (UriFormatException)
@@ -148,7 +148,7 @@ public sealed record HttpResponse(int StatusCode, IReadOnlyDictionary<string, st
         return new HttpResponse((int)message.StatusCode, headers, body);
     }
 
-    public ValueTask<Result<LuaValue, LanghuanError.LuaError>> ToLuaAsync(LuaState lua,
+    public Result<LuaValue, LanghuanError.LuaError> ToLua(LuaState lua,
         CancellationToken cancellationToken = default)
     {
         var headersTable = new LuaTable();
@@ -163,7 +163,7 @@ public sealed record HttpResponse(int StatusCode, IReadOnlyDictionary<string, st
             ["headers"] = headersTable,
             ["body"] = new ByteArray(this.Body),
         };
-        return ValueTask.FromResult(Result.Success<LuaValue, LanghuanError.LuaError>((LuaValue)table));
+        return Result.Success<LuaValue, LanghuanError.LuaError>((LuaValue)table);
     }
 }
 
@@ -173,7 +173,8 @@ public class HttpFetcher(
     HttpClient http
 ) : IFetcher<HttpRequest, HttpResponse>
 {
-    public async Task<HttpResponse> FetchAsync(HttpRequest httpRequest, CancellationToken cancellationToken = default)
+    public async ValueTask<HttpResponse> FetchAsync(HttpRequest httpRequest,
+        CancellationToken cancellationToken = default)
     {
         var request = httpRequest.ToHttpRequestMessage();
         var httpResponse = await http.SendAsync(request, cancellationToken);

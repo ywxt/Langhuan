@@ -5,11 +5,11 @@ using Lua;
 
 public interface IFromLua<TSelf>
 {
-    static abstract ValueTask<Result<TSelf, LanghuanError.LuaError>> FromLuaAsync(LuaState lua, LuaValue value,
+    static abstract Result<TSelf, LanghuanError.LuaError> FromLua(LuaState lua, LuaValue value,
         CancellationToken cancellationToken = default);
 }
 
 public interface IToLua
 {
-    ValueTask<Result<LuaValue, LanghuanError.LuaError>> ToLuaAsync(LuaState lua, CancellationToken cancellationToken = default);
+    Result<LuaValue, LanghuanError.LuaError> ToLua(LuaState lua, CancellationToken cancellationToken = default);
 }

@@ -5,7 +5,8 @@ using CSharpFunctionalExtensions;
 
 public sealed class Provider<TS, TR, TO>(IFetcher<TR, TS> fetcher, IExtractor<TS, TR, TO> extractor)
 {
-    public async Task<Result<TO, LanghuanError>> FetchAsync(string id, CancellationToken cancellationToken = default)
+    public async ValueTask<Result<TO, LanghuanError>> FetchAsync(string id,
+        CancellationToken cancellationToken = default)
     {
         var request = await extractor.RequestAsync(id, cancellationToken);
         if (request.IsFailure)
@@ -33,7 +34,7 @@ public sealed class ListProvider<TS, TR, TO>(IFetcher<TR, TS> fetcher, IListExtr
         }
     }
 
-    public async Task<Result<Source, LanghuanError>> FetchSourceAsync(string id, RequestedPage<TS> page,
+    public async ValueTask<Result<Source, LanghuanError>> FetchSourceAsync(string id, RequestedPage<TS> page,
         CancellationToken cancellationToken = default)
     {
         var (_, isFailure, request, error) = await extractor.NextRequestAsync(id, page, cancellationToken);
@@ -47,7 +48,7 @@ public sealed class ListProvider<TS, TR, TO>(IFetcher<TR, TS> fetcher, IListExtr
         return new Source(currentPage, source);
     }
 
-    public Task<Result<IAsyncEnumerable<Result<TO, LanghuanError>>, LanghuanError>> FetchListAsync(string id,
+    public ValueTask<Result<IEnumerable<Result<TO, LanghuanError>>, LanghuanError>> FetchListAsync(string id,
         Source source,
         CancellationToken cancellationToken = default) =>
         extractor.ExtractListAsync(id, source.SourceData, source.Page, cancellationToken);
@@ -73,7 +74,7 @@ public sealed class ListProvider<TS, TR, TO>(IFetcher<TR, TS> fetcher, IListExtr
                 yield break;
             }
 
-            await foreach (var item in list.WithCancellation(cancellationToken))
+            foreach (var item in list)
             {
                 hasItems = true;
                 yield return item;
