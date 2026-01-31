@@ -29,7 +29,7 @@ public class BookInfoTest
         var result = BookInfo.FromLua(LuaState.Create(), luaValue);
         Assert.True(result.IsFailure);
         Assert.IsType<LanghuanError.LuaError>(result.Error);
-        Assert.Contains("'id' field in BookInfo table is missing", result.Error.Message);
+        Assert.Contains("'book_id' field in BookInfo table is missing", result.Error.Message);
     }
 
     [Fact]
@@ -37,7 +37,7 @@ public class BookInfoTest
     {
         var table = new LuaTable
         {
-            ["id"] = new LuaValue("123"),
+            ["book_id"] = new LuaValue("123"),
             ["author"] = new LuaValue("Sample Author"),
             ["description"] = new LuaValue("Sample Description"),
             ["cover_url"] = new LuaValue("https://example.com/cover.jpg")
@@ -54,7 +54,7 @@ public class BookInfoTest
     {
         var table = new LuaTable
         {
-            ["id"] = new LuaValue("123"),
+            ["book_id"] = new LuaValue("123"),
             ["title"] = new LuaValue("Sample Title"),
             ["description"] = new LuaValue("Sample Description"),
             ["cover_url"] = new LuaValue("https://example.com/cover.jpg")
@@ -71,7 +71,7 @@ public class BookInfoTest
     {
         var table = new LuaTable
         {
-            ["id"] = new LuaValue("123"),
+            ["book_id"] = new LuaValue("123"),
             ["title"] = new LuaValue("Sample Title"),
             ["author"] = new LuaValue("Sample Author"),
             ["cover_url"] = new LuaValue("https://example.com/cover.jpg")
@@ -88,7 +88,7 @@ public class BookInfoTest
     {
         var table = new LuaTable
         {
-            ["id"] = new LuaValue("123"),
+            ["book_id"] = new LuaValue("123"),
             ["title"] = new LuaValue("Sample Title"),
             ["author"] = new LuaValue("Sample Author"),
             ["description"] = new LuaValue("Sample Description")
@@ -105,7 +105,7 @@ public class BookInfoTest
     {
         var table = new LuaTable
         {
-            ["id"] = new LuaValue("123"),
+            ["book_id"] = new LuaValue("123"),
             ["title"] = new LuaValue("Sample Title"),
             ["author"] = new LuaValue("Sample Author"),
             ["description"] = new LuaValue("Sample Description"),
@@ -114,7 +114,7 @@ public class BookInfoTest
         var luaValue = new LuaValue(table);
         var result = BookInfo.FromLua(LuaState.Create(), luaValue);
         Assert.True(result.IsSuccess);
-        Assert.Equal("123", result.Value.Id);
+        Assert.Equal("123", result.Value.BookId);
         Assert.Equal("Sample Title", result.Value.Title);
         Assert.Equal("Sample Author", result.Value.Author);
         Assert.Equal("Sample Description", result.Value.Description);

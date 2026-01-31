@@ -12,7 +12,7 @@ public class TocItemTest
         var luaState = LuaState.Create();
         var luaTable = new LuaTable
         {
-            ["id"] = "123",
+            ["book_id"] = "123",
             ["title"] = "Sample Title",
             ["chapter_id"] = "456"
         };
@@ -23,7 +23,7 @@ public class TocItemTest
 
         // Assert
         Assert.True(result.IsSuccess);
-        Assert.Equal("123", result.Value.Id);
+        Assert.Equal("123", result.Value.BookId);
         Assert.Equal("Sample Title", result.Value.Title);
         Assert.Equal("456", result.Value.ChapterId);
     }
@@ -60,7 +60,7 @@ public class TocItemTest
 
         // Assert
         Assert.True(result.IsFailure);
-        Assert.Contains("'id' field in TocItem table is missing", result.Error.Message);
+        Assert.Contains("'book_id' field in TocItem table is missing", result.Error.Message);
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class TocItemTest
         var luaState = LuaState.Create();
         var luaTable = new LuaTable
         {
-            ["id"] = "123",
+            ["book_id"] = "123",
             ["chapter_id"] = "456"
         };
         var luaValue = new LuaValue(luaTable);
@@ -90,7 +90,7 @@ public class TocItemTest
         var luaState = LuaState.Create();
         var luaTable = new LuaTable
         {
-            ["id"] = "123",
+            ["book_id"] = "123",
             ["title"] = "Sample Title"
         };
         var luaValue = new LuaValue(luaTable);

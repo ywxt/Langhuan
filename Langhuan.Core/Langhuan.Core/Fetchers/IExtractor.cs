@@ -39,7 +39,7 @@ public abstract record RequestedPage<TS>
 
 public interface IExtractor<in TS, TR, TO>
 {
-    ValueTask<Result<TR, LanghuanError>>  RequestAsync(string id, CancellationToken cancellationToken = default);
+    ValueTask<Result<TR, LanghuanError>> RequestAsync(string id, CancellationToken cancellationToken = default);
     ValueTask<Result<TO, LanghuanError>> ExtractAsync(TS source, string id, CancellationToken cancellationToken = default);
 }
 

@@ -4,7 +4,7 @@ using CSharpFunctionalExtensions;
 using Fetchers;
 using Lua;
 
-public sealed record BookInfo(string Id, string Title, string Author, string Description, string CoverUrl)
+public sealed record BookInfo(string BookId, string Title, string Author, string Description, string CoverUrl)
     : IFromLua<BookInfo>
 {
     public static Result<BookInfo, LanghuanError.LuaError> FromLua(LuaState lua, LuaValue value,
@@ -16,10 +16,10 @@ public sealed record BookInfo(string Id, string Title, string Author, string Des
                 $"Expected table for BookInfo, get {value.Type}"));
         }
 
-        if (!table.ReadStringField("id", out var id))
+        if (!table.ReadStringField("book_id", out var id))
         {
             return Result.Failure<BookInfo, LanghuanError.LuaError>(new LanghuanError.LuaError(
-                $"'id' field in BookInfo table is missing or not a string"));
+                $"'book_id' field in BookInfo table is missing or not a string"));
         }
 
         if (!table.ReadStringField("title", out var title))

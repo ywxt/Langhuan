@@ -4,7 +4,7 @@ using CSharpFunctionalExtensions;
 using Fetchers;
 using Lua;
 
-public sealed record TocItem(string Id, string Title, string ChapterId) : IFromLua<TocItem>
+public sealed record TocItem(string BookId, string Title, string ChapterId) : IFromLua<TocItem>
 {
     public static Result<TocItem, LanghuanError.LuaError> FromLua(LuaState lua, LuaValue value,
         CancellationToken cancellationToken = default)
@@ -15,10 +15,10 @@ public sealed record TocItem(string Id, string Title, string ChapterId) : IFromL
                 $"Expected table for TocItem, get {value.Type}"));
         }
 
-        if (!table.ReadStringField("id", out var id))
+        if (!table.ReadStringField("book_id", out var id))
         {
             return Result.Failure<TocItem, LanghuanError.LuaError>(new LanghuanError.LuaError(
-                $"'id' field in TocItem table is missing or not a string"));
+                $"'book_id' field in TocItem table is missing or not a string"));
         }
 
         if (!table.ReadStringField("title", out var title))

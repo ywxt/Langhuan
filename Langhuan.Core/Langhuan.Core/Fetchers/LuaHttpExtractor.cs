@@ -1,6 +1,5 @@
 namespace Langhuan.Core.Fetchers;
 
-using System.Runtime.CompilerServices;
 using CSharpFunctionalExtensions;
 using Lua;
 
