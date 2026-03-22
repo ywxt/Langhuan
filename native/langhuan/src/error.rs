@@ -62,3 +62,52 @@ impl Error {
 
 /// A specialized `Result` type for langhuan operations.
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lua_error_not_retryable() {
+        let err = Error::Lua(mlua::Error::RuntimeError("test".into()));
+        assert!(!err.is_retryable());
+    }
+
+    #[test]
+    fn missing_function_not_retryable() {
+        let err = Error::MissingFunction {
+            name: "search".into(),
+        };
+        assert!(!err.is_retryable());
+    }
+
+    #[test]
+    fn invalid_feed_not_retryable() {
+        let err = Error::InvalidFeed {
+            message: "bad metadata".into(),
+        };
+        assert!(!err.is_retryable());
+    }
+
+    #[test]
+    fn script_parse_not_retryable() {
+        let err = Error::ScriptParse {
+            line: 1,
+            message: "unexpected token".into(),
+        };
+        assert!(!err.is_retryable());
+    }
+
+    /// A real TCP connect to an unroutable address yields a connection error,
+    /// which should be considered retryable.
+    #[tokio::test]
+    async fn connect_error_is_retryable() {
+        let result = reqwest::Client::new()
+            .get("http://127.0.0.1:0/")
+            .send()
+            .await;
+        let e = result.expect_err("expected connect failure");
+        let err = Error::Http(e);
+        assert!(err.is_retryable(), "connect errors must be retryable");
+    }
+}

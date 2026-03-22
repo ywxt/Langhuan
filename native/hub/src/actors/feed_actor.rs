@@ -25,7 +25,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::signals::{
     ChapterContentItem, ChapterContentRequest, ChapterInfoItem, ChaptersRequest, FeedCancelRequest,
-    FeedStreamEnd, SearchRequest, SearchResultItem,
+    FeedStreamEnd, FeedStreamStatus, SearchRequest, SearchResultItem,
 };
 
 // ---------------------------------------------------------------------------
@@ -131,6 +131,51 @@ impl FeedActor {
 // Task implementations (run inside `tokio::spawn`)
 // ---------------------------------------------------------------------------
 
+/// Emit a [`FeedStreamEnd`] signal with the given status and optional error.
+fn emit_end(request_id: &str, status: FeedStreamStatus, error: Option<String>) {
+    FeedStreamEnd {
+        request_id: request_id.to_owned(),
+        status,
+        error,
+        retried_count: 0,
+    }
+    .send_signal_to_dart();
+}
+
+/// Generic stream driver shared by all three `run_*` functions.
+///
+/// Drives `stream` to completion, calling `emit_item` for every successful
+/// item.  Handles cancellation and per-item errors uniformly.
+async fn run_stream<T, F>(
+    request_id: String,
+    mut stream: langhuan::feed::FeedStream<'_, T>,
+    token: CancellationToken,
+    mut emit_item: F,
+) where
+    F: FnMut(T),
+{
+    loop {
+        tokio::select! {
+            biased;
+            _ = token.cancelled() => {
+                emit_end(&request_id, FeedStreamStatus::Cancelled, None);
+                return;
+            }
+            item = stream.next() => {
+                match item {
+                    None => break,
+                    Some(Ok(value)) => emit_item(value),
+                    Some(Err(e)) => {
+                        emit_end(&request_id, FeedStreamStatus::Failed, Some(e.to_string()));
+                        return;
+                    }
+                }
+            }
+        }
+    }
+    emit_end(&request_id, FeedStreamStatus::Completed, None);
+}
+
 /// Load the feed script identified by `feed_id` from the engine.
 ///
 /// Currently a placeholder that expects a pre-registered script path
@@ -147,24 +192,16 @@ fn load_feed(
         Ok(script) => match engine.load_feed(&script) {
             Ok(feed) => Some(feed),
             Err(e) => {
-                FeedStreamEnd {
-                    request_id: request_id.to_owned(),
-                    status: "failed".to_owned(),
-                    error: Some(e.to_string()),
-                    retried_count: 0,
-                }
-                .send_signal_to_dart();
+                emit_end(request_id, FeedStreamStatus::Failed, Some(e.to_string()));
                 None
             }
         },
         Err(e) => {
-            FeedStreamEnd {
-                request_id: request_id.to_owned(),
-                status: "failed".to_owned(),
-                error: Some(format!("cannot load feed script '{}': {}", feed_id, e)),
-                retried_count: 0,
-            }
-            .send_signal_to_dart();
+            emit_end(
+                request_id,
+                FeedStreamStatus::Failed,
+                Some(format!("cannot load feed script '{}': {}", feed_id, e)),
+            );
             None
         }
     }
@@ -174,110 +211,36 @@ async fn run_search(engine: Arc<ScriptEngine>, req: SearchRequest, token: Cancel
     let Some(feed) = load_feed(&engine, &req.feed_id, &req.request_id) else {
         return;
     };
-
-    let mut stream: langhuan::feed::FeedStream<'_, langhuan::model::SearchResult> =
-        feed.search(&req.keyword);
-
-    loop {
-        tokio::select! {
-            biased;
-            _ = token.cancelled() => {
-                FeedStreamEnd {
-                    request_id: req.request_id,
-                    status: "cancelled".to_owned(),
-                    error: None,
-                    retried_count: 0,
-                }.send_signal_to_dart();
-                return;
-            }
-            item = stream.next() => {
-                match item {
-                    None => break,
-                    Some(Ok(result)) => {
-                        SearchResultItem {
-                            request_id: req.request_id.clone(),
-                            id: result.id,
-                            title: result.title,
-                            author: result.author,
-                            cover_url: result.cover_url,
-                            description: result.description,
-                        }.send_signal_to_dart();
-                    }
-                    Some(Err(e)) => {
-                        FeedStreamEnd {
-                            request_id: req.request_id,
-                            status: "failed".to_owned(),
-                            error: Some(e.to_string()),
-                            retried_count: 0,
-                        }.send_signal_to_dart();
-                        return;
-                    }
-                }
-            }
+    let stream = feed.search(&req.keyword);
+    run_stream(req.request_id.clone(), stream, token, |result| {
+        SearchResultItem {
+            request_id: req.request_id.clone(),
+            id: result.id,
+            title: result.title,
+            author: result.author,
+            cover_url: result.cover_url,
+            description: result.description,
         }
-    }
-
-    FeedStreamEnd {
-        request_id: req.request_id,
-        status: "completed".to_owned(),
-        error: None,
-        retried_count: 0,
-    }
-    .send_signal_to_dart();
+        .send_signal_to_dart();
+    })
+    .await;
 }
 
 async fn run_chapters(engine: Arc<ScriptEngine>, req: ChaptersRequest, token: CancellationToken) {
     let Some(feed) = load_feed(&engine, &req.feed_id, &req.request_id) else {
         return;
     };
-
-    let mut stream: langhuan::feed::FeedStream<'_, langhuan::model::ChapterInfo> =
-        feed.chapters(&req.book_id);
-
-    loop {
-        tokio::select! {
-            biased;
-            _ = token.cancelled() => {
-                FeedStreamEnd {
-                    request_id: req.request_id,
-                    status: "cancelled".to_owned(),
-                    error: None,
-                    retried_count: 0,
-                }.send_signal_to_dart();
-                return;
-            }
-            item = stream.next() => {
-                match item {
-                    None => break,
-                    Some(Ok(chapter)) => {
-                        ChapterInfoItem {
-                            request_id: req.request_id.clone(),
-                            id: chapter.id,
-                            title: chapter.title,
-                            index: chapter.index,
-                        }.send_signal_to_dart();
-                    }
-                    Some(Err(e)) => {
-                        FeedStreamEnd {
-                            request_id: req.request_id,
-                            status: "failed".to_owned(),
-                            error: Some(e.to_string()),
-                            retried_count: 0,
-                        }.send_signal_to_dart();
-                        return;
-                    }
-                }
-            }
+    let stream = feed.chapters(&req.book_id);
+    run_stream(req.request_id.clone(), stream, token, |chapter| {
+        ChapterInfoItem {
+            request_id: req.request_id.clone(),
+            id: chapter.id,
+            title: chapter.title,
+            index: chapter.index,
         }
-    }
-
-    FeedStreamEnd {
-        request_id: req.request_id,
-        status: "completed".to_owned(),
-        error: None,
-        retried_count: 0,
-    }
-    .send_signal_to_dart();
+        .send_signal_to_dart();
+    })
+    .await;
 }
 
 async fn run_chapter_content(
@@ -288,51 +251,14 @@ async fn run_chapter_content(
     let Some(feed) = load_feed(&engine, &req.feed_id, &req.request_id) else {
         return;
     };
-
-    let mut stream: langhuan::feed::FeedStream<'_, langhuan::model::ChapterContent> =
-        feed.chapter_content(&req.chapter_id);
-
-    loop {
-        tokio::select! {
-            biased;
-            _ = token.cancelled() => {
-                FeedStreamEnd {
-                    request_id: req.request_id,
-                    status: "cancelled".to_owned(),
-                    error: None,
-                    retried_count: 0,
-                }.send_signal_to_dart();
-                return;
-            }
-            item = stream.next() => {
-                match item {
-                    None => break,
-                    Some(Ok(content)) => {
-                        ChapterContentItem {
-                            request_id: req.request_id.clone(),
-                            title: content.title,
-                            paragraphs: content.paragraphs,
-                        }.send_signal_to_dart();
-                    }
-                    Some(Err(e)) => {
-                        FeedStreamEnd {
-                            request_id: req.request_id,
-                            status: "failed".to_owned(),
-                            error: Some(e.to_string()),
-                            retried_count: 0,
-                        }.send_signal_to_dart();
-                        return;
-                    }
-                }
-            }
+    let stream = feed.chapter_content(&req.chapter_id);
+    run_stream(req.request_id.clone(), stream, token, |content| {
+        ChapterContentItem {
+            request_id: req.request_id.clone(),
+            title: content.title,
+            paragraphs: content.paragraphs,
         }
-    }
-
-    FeedStreamEnd {
-        request_id: req.request_id,
-        status: "completed".to_owned(),
-        error: None,
-        retried_count: 0,
-    }
-    .send_signal_to_dart();
+        .send_signal_to_dart();
+    })
+    .await;
 }

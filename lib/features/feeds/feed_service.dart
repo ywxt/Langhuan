@@ -48,12 +48,6 @@ class ChapterContentModel {
 }
 
 // ---------------------------------------------------------------------------
-// Stream status
-// ---------------------------------------------------------------------------
-
-enum FeedStreamStatus { streaming, completed, cancelled, failed }
-
-// ---------------------------------------------------------------------------
 // FeedService
 // ---------------------------------------------------------------------------
 
@@ -188,7 +182,7 @@ class FeedService {
   // -------------------------------------------------------------------------
 
   /// Cancel an in-progress stream.  Rust will stop emitting items and send a
-  /// [FeedStreamEnd] with `status == "cancelled"`.
+  /// [FeedStreamEnd] with `status == FeedStreamStatus.cancelled`.
   void cancel(String requestId) {
     FeedCancelRequest(requestId: requestId).sendSignalToRust();
   }
@@ -200,7 +194,7 @@ class FeedService {
   /// Build a [Stream<T>] that:
   /// - Emits items from [itemStream] as they arrive.
   /// - Terminates (closes) when the matching [FeedStreamEnd] arrives.
-  /// - Throws a [FeedStreamException] if the end status is `"failed"`.
+  /// - Throws a [FeedStreamException] if the end status is `FeedStreamStatus.failed`.
   Stream<T> _buildStream<T>({
     required String requestId,
     required Stream<T> itemStream,
@@ -222,7 +216,7 @@ class FeedService {
             .where((pack) => pack.message.requestId == requestId)
             .listen((pack) {
               final msg = pack.message;
-              if (msg.status == 'failed') {
+              if (msg.status == FeedStreamStatus.failed) {
                 controller.addError(
                   FeedStreamException(
                     requestId: requestId,

@@ -97,14 +97,21 @@ pub struct ChapterContentItem {
     pub paragraphs: Vec<String>,
 }
 
+/// The terminal status of a feed stream.
+#[derive(Serialize, SignalPiece)]
+pub enum FeedStreamStatus {
+    Completed,
+    Cancelled,
+    Failed,
+}
+
 /// Terminal signal for any feed stream.  Always emitted exactly once per
 /// `request_id`, after all items (or immediately on cancellation/error).
 #[derive(Serialize, RustSignal)]
 pub struct FeedStreamEnd {
     pub request_id: String,
-    /// `"completed"` | `"cancelled"` | `"failed"`
-    pub status: String,
-    /// Human-readable error message, present only when `status == "failed"`.
+    pub status: FeedStreamStatus,
+    /// Human-readable error message, present only when `status == Failed`.
     pub error: Option<String>,
     /// Number of retry attempts made before the final outcome.
     pub retried_count: u32,

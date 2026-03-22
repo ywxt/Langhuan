@@ -310,3 +310,215 @@ impl Feed for LuaFeed {
         &self.meta
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use tokio_stream::StreamExt as _;
+
+    use super::*;
+    use crate::error::Error;
+    use crate::script::engine::ScriptEngine;
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+
+    /// Build a minimal feed script header with the given `base_url`.
+    fn make_header(base_url: &str) -> String {
+        format!(
+            r#"-- ==Feed==
+-- @id          test-feed
+-- @name        Test Feed
+-- @version     1.0
+-- @base_url    {base_url}
+-- ==/Feed==
+"#
+        )
+    }
+
+    /// A Lua script body that:
+    /// - `search.request(keyword, cursor)` → GET `meta.base_url/search?q=<keyword>&cursor=<cursor>`
+    /// - `search.parse(resp)` → evaluates the response body as a Lua table literal
+    /// - All other handlers are stubs that return empty pages / empty objects.
+    const SEARCH_BODY: &str = r#"
+return {
+    search = {
+        request = function(keyword, cursor)
+            local url = meta.base_url .. "/search?q=" .. tostring(keyword)
+            if cursor ~= nil and cursor ~= "" then
+                url = url .. "&cursor=" .. tostring(cursor)
+            end
+            return { url = url, method = "GET" }
+        end,
+        parse = function(resp)
+            -- The mock server returns a Lua-syntax table literal as the body.
+            -- We decode it by wrapping in a `return` and calling `load`.
+            local fn_src = "return " .. resp.body
+            local fn_body, err = load(fn_src)
+            if not fn_body then error("parse error: " .. tostring(err)) end
+            return fn_body()
+        end,
+    },
+    book_info = {
+        request = function(id) return { url = meta.base_url .. "/book/" .. id } end,
+        parse   = function(resp)
+            local fn_body = load("return " .. resp.body)
+            return fn_body()
+        end,
+    },
+    chapters = {
+        request = function(book_id, cursor) return { url = meta.base_url .. "/chapters/" .. book_id } end,
+        parse   = function(resp) return { items = {}, next_cursor = nil } end,
+    },
+    chapter_content = {
+        request = function(chapter_id, cursor) return { url = meta.base_url .. "/content/" .. chapter_id } end,
+        parse   = function(resp) return { items = {}, next_cursor = nil } end,
+    },
+}
+"#;
+
+    /// A Lua script body whose `search.parse` always raises a Lua error.
+    const PARSE_ERROR_BODY: &str = r#"
+return {
+    search = {
+        request = function(keyword, cursor)
+            return { url = meta.base_url .. "/search" }
+        end,
+        parse = function(resp)
+            error("intentional parse failure")
+        end,
+    },
+    book_info = {
+        request = function(id) return { url = meta.base_url .. "/book/" .. id } end,
+        parse   = function(resp) error("stub") end,
+    },
+    chapters = {
+        request = function(book_id, cursor) return { url = meta.base_url .. "/chapters/" .. book_id } end,
+        parse   = function(resp) return { items = {}, next_cursor = nil } end,
+    },
+    chapter_content = {
+        request = function(chapter_id, cursor) return { url = meta.base_url .. "/content/" .. chapter_id } end,
+        parse   = function(resp) return { items = {}, next_cursor = nil } end,
+    },
+}
+"#;
+
+    /// Load a `LuaFeed` from the given script body, injecting `base_url` into
+    /// the `==Feed==` header so Lua can reference it via `meta.base_url`.
+    fn load_feed(base_url: &str, body: &str) -> LuaFeed {
+        let script = format!("{}{}", make_header(base_url), body);
+        ScriptEngine::new()
+            .load_feed(&script)
+            .expect("script should load without error")
+    }
+
+    // -----------------------------------------------------------------------
+    // Tests: single-page search
+    // -----------------------------------------------------------------------
+
+    /// A single-page response with two items and `next_cursor = nil` should
+    /// yield exactly those two items and then close the stream.
+    #[tokio::test]
+    async fn single_page_search_yields_all_items() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/search")
+            .match_query(mockito::Matcher::UrlEncoded("q".into(), "rust".into()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                r#"{items = {{id = "1", title = "Rust Book", author = "Steve"}, {id = "2", title = "Async Rust", author = "Alice"}}, next_cursor = nil}"#,
+            )
+            .create_async()
+            .await;
+
+        let feed = load_feed(&server.url(), SEARCH_BODY);
+        let results: Vec<_> = feed
+            .search("rust")
+            .collect::<Vec<_>>()
+            .await;
+
+        assert_eq!(results.len(), 2, "expected 2 items from single page");
+        let first = results[0].as_ref().expect("first item should be Ok");
+        assert_eq!(first.id, "1");
+        assert_eq!(first.title, "Rust Book");
+        let second = results[1].as_ref().expect("second item should be Ok");
+        assert_eq!(second.id, "2");
+        assert_eq!(second.title, "Async Rust");
+    }
+
+    // -----------------------------------------------------------------------
+    // Tests: multi-page search (cursor following)
+    // -----------------------------------------------------------------------
+
+    /// A two-page response: first page returns `next_cursor = "page2"`, second
+    /// page returns `next_cursor = nil`.  The stream should yield all 3 items.
+    #[tokio::test]
+    async fn multi_page_search_follows_cursor() {
+        let mut server = mockito::Server::new_async().await;
+
+        // First page — no cursor param
+        let _mock1 = server
+            .mock("GET", "/search")
+            .match_query(mockito::Matcher::UrlEncoded("q".into(), "book".into()))
+            .with_status(200)
+            .with_body(
+                r#"{items = {{id = "1", title = "Book One", author = "A"}}, next_cursor = "page2"}"#,
+            )
+            .create_async()
+            .await;
+
+        // Second page — cursor param present
+        let _mock2 = server
+            .mock("GET", "/search")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("q".into(), "book".into()),
+                mockito::Matcher::UrlEncoded("cursor".into(), "page2".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                r#"{items = {{id = "2", title = "Book Two", author = "B"}, {id = "3", title = "Book Three", author = "C"}}, next_cursor = nil}"#,
+            )
+            .create_async()
+            .await;
+
+        let feed = load_feed(&server.url(), SEARCH_BODY);
+        let results: Vec<_> = feed.search("book").collect::<Vec<_>>().await;
+
+        assert_eq!(results.len(), 3, "expected 3 items across 2 pages");
+        assert_eq!(results[0].as_ref().unwrap().id, "1");
+        assert_eq!(results[1].as_ref().unwrap().id, "2");
+        assert_eq!(results[2].as_ref().unwrap().id, "3");
+    }
+
+    // -----------------------------------------------------------------------
+    // Tests: Lua parse error terminates stream
+    // -----------------------------------------------------------------------
+
+    /// When the Lua `parse` function raises an error, the stream should yield
+    /// a single `Err(Error::Lua(_))` and then close.
+    #[tokio::test]
+    async fn stream_terminates_on_lua_parse_error() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/search")
+            .with_status(200)
+            .with_body("{}")
+            .create_async()
+            .await;
+
+        let feed = load_feed(&server.url(), PARSE_ERROR_BODY);
+        let results: Vec<_> = feed.search("anything").collect::<Vec<_>>().await;
+
+        assert_eq!(results.len(), 1, "expected exactly one error item");
+        assert!(
+            matches!(results[0], Err(Error::Lua(_))),
+            "expected Lua error, got: {:?}",
+            results[0]
+        );
+    }
+}
