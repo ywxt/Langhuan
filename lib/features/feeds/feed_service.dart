@@ -188,6 +188,38 @@ class FeedService {
   }
 
   // -------------------------------------------------------------------------
+  // Script directory
+  // -------------------------------------------------------------------------
+
+  /// Tell Rust which directory contains `registry.toml` and the feed scripts.
+  ///
+  /// Rust will eagerly compile every feed listed in the registry, then
+  /// respond with a [ScriptDirectorySet] signal.  If the registry file does
+  /// not exist yet, `success` will be `false` and an error message will be
+  /// provided — no crash.
+  ///
+  /// Returns a [Future] that completes once Rust has finished loading.
+  Future<ScriptDirectorySet> setScriptDirectory(String path) {
+    SetScriptDirectory(path: path).sendSignalToRust();
+    return ScriptDirectorySet.rustSignalStream.first.then(
+      (pack) => pack.message,
+    );
+  }
+
+  /// Request a list of all feeds currently loaded in Rust.
+  ///
+  /// Returns a [Future] that completes with the [FeedListResult] once Rust
+  /// responds.
+  Future<FeedListResult> listFeeds() {
+    final requestId = _nextId();
+    ListFeedsRequest(requestId: requestId).sendSignalToRust();
+    return FeedListResult.rustSignalStream
+        .where((pack) => pack.message.requestId == requestId)
+        .first
+        .then((pack) => pack.message);
+  }
+
+  // -------------------------------------------------------------------------
   // Internal helpers
   // -------------------------------------------------------------------------
 

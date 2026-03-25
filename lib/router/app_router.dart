@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/bookshelf/bookshelf_page.dart';
+import '../features/bookshelf/search_page.dart';
 import '../features/feeds/feeds_page.dart';
 import '../features/profile/profile_page.dart';
 import '../shared/widgets/main_scaffold.dart';
@@ -25,6 +26,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 path: '/bookshelf',
                 name: 'bookshelf',
                 builder: (context, state) => const BookshelfPage(),
+                routes: [
+                  GoRoute(
+                    path: 'search',
+                    name: 'bookshelf-search',
+                    builder: (context, state) => const SearchPage(),
+                  ),
+                ],
               ),
             ],
           ),

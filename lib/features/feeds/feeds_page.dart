@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../l10n/app_localizations.dart';
+import '../../src/bindings/signals/signals.dart';
 import 'feed_providers.dart';
-import 'feed_service.dart';
 
 // ---------------------------------------------------------------------------
-// TODO: Replace this with your actual feed ID loaded from storage.
+// FeedsPage — feed (book source) list
 // ---------------------------------------------------------------------------
-const _demoFeedId = 'path/to/your/feed_script.lua';
 
 class FeedsPage extends ConsumerStatefulWidget {
   const FeedsPage({super.key});
@@ -17,205 +17,309 @@ class FeedsPage extends ConsumerStatefulWidget {
 }
 
 class _FeedsPageState extends ConsumerState<FeedsPage> {
-  final _searchController = TextEditingController();
+  final _filterController = TextEditingController();
+  String _filterText = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _filterController.addListener(() {
+      setState(() => _filterText = _filterController.text.trim().toLowerCase());
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(feedListProvider.notifier).load();
+    });
+  }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _filterController.dispose();
     super.dispose();
   }
 
-  void _onSearch() {
-    final keyword = _searchController.text.trim();
-    if (keyword.isEmpty) return;
-    ref.read(searchProvider.notifier).search(
-          feedId: _demoFeedId,
-          keyword: keyword,
-        );
+  List<FeedMetaItem> _filtered(List<FeedMetaItem> items) {
+    if (_filterText.isEmpty) return items;
+    return items
+        .where(
+          (f) =>
+              f.name.toLowerCase().contains(_filterText) ||
+              f.id.toLowerCase().contains(_filterText),
+        )
+        .toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(searchProvider);
+    final feedState = ref.watch(feedListProvider);
     final colorScheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
+
+    final filtered = _filtered(feedState.items);
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          // ── App bar ─────────────────────────────────────────────────────
-          SliverAppBar.medium(
-            title: const Text('Feeds'),
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(72),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: SearchBar(
-                  controller: _searchController,
-                  hintText: 'Search books…',
-                  leading: const Icon(Icons.search),
-                  trailing: [
-                    if (state.isLoading)
-                      IconButton(
-                        icon: const Icon(Icons.cancel_outlined),
-                        tooltip: 'Cancel',
-                        onPressed: () =>
-                            ref.read(searchProvider.notifier).cancelAndClear(),
-                      )
-                    else if (_searchController.text.isNotEmpty)
-                      IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                          ref.read(searchProvider.notifier).cancelAndClear();
-                        },
-                      ),
-                  ],
-                  onSubmitted: (_) => _onSearch(),
-                ),
-              ),
-            ),
-          ),
-
-          // ── Loading indicator ────────────────────────────────────────────
-          if (state.isLoading)
-            const SliverToBoxAdapter(
-              child: LinearProgressIndicator(),
-            ),
-
-          // ── Error banner ─────────────────────────────────────────────────
-          if (state.hasError)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Card(
-                  color: colorScheme.errorContainer,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Something went wrong',
-                          style: TextStyle(
-                            color: colorScheme.onErrorContainer,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          state.error.toString(),
-                          style: TextStyle(color: colorScheme.onErrorContainer),
-                        ),
-                        const SizedBox(height: 8),
-                        FilledButton.tonal(
-                          onPressed: () => ref
-                              .read(searchProvider.notifier)
-                              .retry(feedId: _demoFeedId),
-                          child: const Text('Retry'),
-                        ),
-                      ],
-                    ),
+      appBar: AppBar(
+        title: Text(l10n.feedsTitle),
+        centerTitle: true,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(64),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: SearchBar(
+              controller: _filterController,
+              hintText: l10n.feedsSearchHint,
+              leading: const Icon(Icons.search),
+              trailing: [
+                if (_filterText.isNotEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.clear),
+                    onPressed: _filterController.clear,
                   ),
-                ),
-              ),
+              ],
             ),
-
-          // ── Empty state ──────────────────────────────────────────────────
-          if (!state.isLoading && !state.hasError && !state.hasItems)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.rss_feed,
-                        size: 64,
-                        color: colorScheme.onSurfaceVariant.withAlpha(100)),
-                    const SizedBox(height: 16),
-                    Text(
-                      state.keyword.isEmpty
-                          ? 'Search for books above'
-                          : 'No results for "${state.keyword}"',
-                      style: TextStyle(color: colorScheme.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-          // ── Results list ─────────────────────────────────────────────────
-          SliverList.builder(
-            itemCount: state.items.length,
-            itemBuilder: (context, index) {
-              final item = state.items[index];
-              return _SearchResultTile(item: item);
-            },
           ),
-
-          // ── Streaming badge at bottom ─────────────────────────────────
-          if (state.isLoading && state.hasItems)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Loading more…',
-                      style: TextStyle(color: colorScheme.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
+        ),
       ),
+      body: _buildBody(context, feedState, filtered, colorScheme, l10n),
     );
   }
-}
 
-// ---------------------------------------------------------------------------
-// Search result tile
-// ---------------------------------------------------------------------------
+  Widget _buildBody(
+    BuildContext context,
+    FeedListState feedState,
+    List<FeedMetaItem> filtered,
+    ColorScheme colorScheme,
+    AppLocalizations l10n,
+  ) {
+    // ── Loading ──────────────────────────────────────────────────────────────
+    if (feedState.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-class _SearchResultTile extends StatelessWidget {
-  const _SearchResultTile({required this.item});
-
-  final SearchResultModel item;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: item.coverUrl != null
-          ? ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: Image.network(
-                item.coverUrl!,
-                width: 40,
-                height: 56,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) =>
-                    const Icon(Icons.menu_book, size: 40),
+    // ── Error ────────────────────────────────────────────────────────────────────────
+    if (feedState.hasError) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, size: 48, color: colorScheme.error),
+              const SizedBox(height: 16),
+              Text(
+                l10n.feedsLoadError,
+                style: TextStyle(
+                  color: colorScheme.error,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            )
-          : const Icon(Icons.menu_book, size: 40),
-      title: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(
-        '${item.author}${item.description != null ? '\n${item.description}' : ''}',
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
-      isThreeLine: item.description != null,
-      onTap: () {
-        // TODO: navigate to book detail page
+              const SizedBox(height: 8),
+              Text(
+                feedState.error.toString(),
+                style: TextStyle(color: colorScheme.onSurfaceVariant),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              FilledButton.tonal(
+                onPressed: () => ref.read(feedListProvider.notifier).load(),
+                child: Text(l10n.feedsRetry),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // ── Empty state ──────────────────────────────────────────────────────────
+    if (!feedState.hasItems) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.rss_feed,
+              size: 64,
+              color: colorScheme.onSurfaceVariant.withAlpha(100),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              l10n.feedsEmpty,
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ── No filter matches ─────────────────────────────────────────────────────
+    if (filtered.isEmpty) {
+      return Center(
+        child: Text(
+          l10n.feedsNoMatch(_filterText),
+          style: TextStyle(color: colorScheme.onSurfaceVariant),
+        ),
+      );
+    }
+
+    // ── Feed list ─────────────────────────────────────────────────────────────
+    return ListView.separated(
+      itemCount: filtered.length,
+      separatorBuilder: (_, _) => const Divider(height: 1, indent: 72),
+      itemBuilder: (context, index) {
+        return _FeedTile(feed: filtered[index]);
       },
     );
   }
 }
 
+// ---------------------------------------------------------------------------
+// Feed list tile
+// ---------------------------------------------------------------------------
+
+class _FeedTile extends StatelessWidget {
+  const _FeedTile({required this.feed});
+
+  final FeedMetaItem feed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
+
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: colorScheme.primaryContainer,
+        child: Text(
+          feed.name.isNotEmpty ? feed.name[0].toUpperCase() : '?',
+          style: TextStyle(
+            color: colorScheme.onPrimaryContainer,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+      title: Text(feed.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(
+        feed.author != null
+            ? 'v${feed.version} · ${feed.author}'
+            : 'v${feed.version}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: IconButton(
+        icon: const Icon(Icons.info_outline),
+        tooltip: l10n.feedDetailTooltip,
+        onPressed: () => _showFeedDetailSheet(context, feed),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Feed detail bottom sheet
+// ---------------------------------------------------------------------------
+
+void _showFeedDetailSheet(BuildContext context, FeedMetaItem feed) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => _FeedDetailSheet(feed: feed),
+  );
+}
+
+class _FeedDetailSheet extends StatelessWidget {
+  const _FeedDetailSheet({required this.feed});
+
+  final FeedMetaItem feed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              feed.name,
+              style: textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 20),
+            _MetaRow(
+              icon: Icons.label_outline,
+              label: l10n.feedDetailId,
+              value: feed.id,
+              colorScheme: colorScheme,
+              textTheme: textTheme,
+            ),
+            const SizedBox(height: 12),
+            _MetaRow(
+              icon: Icons.tag,
+              label: l10n.feedDetailVersion,
+              value: feed.version,
+              colorScheme: colorScheme,
+              textTheme: textTheme,
+            ),
+            if (feed.author != null) ...[
+              const SizedBox(height: 12),
+              _MetaRow(
+                icon: Icons.person_outline,
+                label: l10n.feedDetailAuthor,
+                value: feed.author!,
+                colorScheme: colorScheme,
+                textTheme: textTheme,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MetaRow extends StatelessWidget {
+  const _MetaRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.colorScheme,
+    required this.textTheme,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final ColorScheme colorScheme;
+  final TextTheme textTheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: colorScheme.onSurfaceVariant),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: textTheme.labelSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              Text(value, style: textTheme.bodyMedium),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}

@@ -1,0 +1,111 @@
+{
+  "@@locale": "en",
+
+  "appName": "Langhuan",
+  "@appName": { "description": "Application name" },
+
+  "navBookshelf": "Bookshelf",
+  "@navBookshelf": { "description": "Bottom nav: bookshelf tab" },
+
+  "navFeeds": "Feeds",
+  "@navFeeds": { "description": "Bottom nav: feeds tab" },
+
+  "navProfile": "Profile",
+  "@navProfile": { "description": "Bottom nav: profile tab" },
+
+  "bookshelfTitle": "Bookshelf",
+  "@bookshelfTitle": { "description": "Bookshelf page title" },
+
+  "bookshelfEmpty": "Your books will appear here",
+  "@bookshelfEmpty": { "description": "Bookshelf empty state message" },
+
+  "bookshelfSearchHint": "Search books…",
+  "@bookshelfSearchHint": { "description": "Search bar hint on bookshelf page" },
+
+  "searchTitle": "Search",
+  "@searchTitle": { "description": "Search page title" },
+
+  "searchHintNoFeed": "Select a feed first…",
+  "@searchHintNoFeed": { "description": "Search bar hint when no feed is selected" },
+
+  "searchHintWithFeed": "Search in {feedName}…",
+  "@searchHintWithFeed": {
+    "description": "Search bar hint when a feed is selected",
+    "placeholders": {
+      "feedName": { "type": "String" }
+    }
+  },
+
+  "searchCancel": "Cancel",
+  "@searchCancel": { "description": "Cancel search button tooltip" },
+
+  "searchClear": "Clear",
+  "@searchClear": { "description": "Clear search button tooltip" },
+
+  "searchEmptyPrompt": "Enter a keyword to start searching",
+  "@searchEmptyPrompt": { "description": "Search empty state: no keyword yet" },
+
+  "searchNoResults": "No results for \"{keyword}\"",
+  "@searchNoResults": {
+    "description": "Search empty state: keyword entered but no results",
+    "placeholders": {
+      "keyword": { "type": "String" }
+    }
+  },
+
+  "searchError": "Search failed",
+  "@searchError": { "description": "Search error title" },
+
+  "searchRetry": "Retry",
+  "@searchRetry": { "description": "Retry button label" },
+
+  "searchLoadingMore": "Loading more…",
+  "@searchLoadingMore": { "description": "Streaming badge at bottom of results" },
+
+  "feedsTitle": "Feeds",
+  "@feedsTitle": { "description": "Feeds page title" },
+
+  "feedsSearchHint": "Search feeds…",
+  "@feedsSearchHint": { "description": "Local filter search bar hint on feeds page" },
+
+  "feedsEmpty": "No feeds loaded.\nPlease add scripts to the scripts folder.",
+  "@feedsEmpty": { "description": "Feeds empty state message" },
+
+  "feedsNoMatch": "No feeds matching \"{keyword}\"",
+  "@feedsNoMatch": {
+    "description": "Feeds local filter no match message",
+    "placeholders": {
+      "keyword": { "type": "String" }
+    }
+  },
+
+  "feedsLoadError": "Failed to load feeds",
+  "@feedsLoadError": { "description": "Feeds load error message" },
+
+  "feedsRetry": "Retry",
+  "@feedsRetry": { "description": "Retry button on feeds error state" },
+
+  "feedDetailId": "ID",
+  "@feedDetailId": { "description": "Feed detail sheet: ID label" },
+
+  "feedDetailVersion": "Version",
+  "@feedDetailVersion": { "description": "Feed detail sheet: version label" },
+
+  "feedDetailAuthor": "Author",
+  "@feedDetailAuthor": { "description": "Feed detail sheet: author label" },
+
+  "feedDetailTooltip": "Details",
+  "@feedDetailTooltip": { "description": "Feed list tile trailing icon tooltip" },
+
+  "feedSelectorNoFeeds": "No feeds available. Add scripts in the Feeds tab first.",
+  "@feedSelectorNoFeeds": { "description": "Search page: no feeds available message" },
+
+  "profileTitle": "Profile",
+  "@profileTitle": { "description": "Profile page title" },
+
+  "profileSubtitle": "Manage your account settings",
+  "@profileSubtitle": { "description": "Profile page subtitle" },
+
+  "errorSomethingWrong": "Something went wrong",
+  "@errorSomethingWrong": { "description": "Generic error title" }
+}

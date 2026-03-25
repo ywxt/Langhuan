@@ -1,0 +1,43 @@
+{
+  "@@locale": "zh",
+
+  "appName": "琅嬛",
+
+  "navBookshelf": "書架",
+  "navFeeds": "書源",
+  "navProfile": "我的",
+
+  "bookshelfTitle": "書架",
+  "bookshelfEmpty": "你的書籍將顯示在這裡",
+  "bookshelfSearchHint": "搜索書籍…",
+
+  "searchTitle": "搜索",
+  "searchHintNoFeed": "請先選擇書源…",
+  "searchHintWithFeed": "在 {feedName} 中搜索…",
+  "searchCancel": "取消",
+  "searchClear": "清除",
+  "searchEmptyPrompt": "輸入關鍵詞開始搜索",
+  "searchNoResults": "「{keyword}」無搜索結果",
+  "searchError": "搜索出錯",
+  "searchRetry": "重試",
+  "searchLoadingMore": "加載更多…",
+
+  "feedsTitle": "書源",
+  "feedsSearchHint": "搜索書源…",
+  "feedsEmpty": "暫無書源\n請將腳本文件放入 scripts 文件夾",
+  "feedsNoMatch": "未找到匹配的書源「{keyword}」",
+  "feedsLoadError": "加載書源失敗",
+  "feedsRetry": "重試",
+
+  "feedDetailId": "ID",
+  "feedDetailVersion": "版本",
+  "feedDetailAuthor": "作者",
+  "feedDetailTooltip": "詳情",
+
+  "feedSelectorNoFeeds": "暫無書源，請先在「書源」頁面添加腳本",
+
+  "profileTitle": "我的",
+  "profileSubtitle": "管理你的帳號設置",
+
+  "errorSomethingWrong": "出現錯誤"
+}

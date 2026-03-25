@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../src/bindings/signals/signals.dart';
 import 'feed_service.dart';
 
 // ---------------------------------------------------------------------------
@@ -288,6 +289,52 @@ class ChapterContentNotifier extends Notifier<ChapterContentState> {
 }
 
 // ---------------------------------------------------------------------------
+// Feed list state
+// ---------------------------------------------------------------------------
+
+class FeedListState {
+  const FeedListState({
+    this.items = const [],
+    this.isLoading = false,
+    this.error,
+  });
+
+  final List<FeedMetaItem> items;
+  final bool isLoading;
+  final Object? error;
+
+  bool get hasError => error != null;
+  bool get hasItems => items.isNotEmpty;
+
+  FeedListState copyWith({
+    List<FeedMetaItem>? items,
+    bool? isLoading,
+    Object? Function()? error,
+  }) {
+    return FeedListState(
+      items: items ?? this.items,
+      isLoading: isLoading ?? this.isLoading,
+      error: error != null ? error() : this.error,
+    );
+  }
+}
+
+class FeedListNotifier extends Notifier<FeedListState> {
+  @override
+  FeedListState build() => const FeedListState();
+
+  Future<void> load() async {
+    state = const FeedListState(isLoading: true);
+    try {
+      final result = await FeedService.instance.listFeeds();
+      state = FeedListState(items: List.unmodifiable(result.items));
+    } catch (e) {
+      state = FeedListState(error: e);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Providers
 // ---------------------------------------------------------------------------
 
@@ -302,4 +349,22 @@ final chaptersProvider = NotifierProvider<ChaptersNotifier, ChaptersState>(
 final chapterContentProvider =
     NotifierProvider<ChapterContentNotifier, ChapterContentState>(
       ChapterContentNotifier.new,
+    );
+
+final feedListProvider = NotifierProvider<FeedListNotifier, FeedListState>(
+  FeedListNotifier.new,
+);
+
+/// The feed currently selected by the user (used as the source for searches).
+class SelectedFeedNotifier extends Notifier<FeedMetaItem?> {
+  @override
+  FeedMetaItem? build() => null;
+
+  void select(FeedMetaItem feed) => state = feed;
+  void clear() => state = null;
+}
+
+final selectedFeedProvider =
+    NotifierProvider<SelectedFeedNotifier, FeedMetaItem?>(
+      SelectedFeedNotifier.new,
     );
