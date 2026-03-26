@@ -107,5 +107,53 @@
   "@profileSubtitle": { "description": "Profile page subtitle" },
 
   "errorSomethingWrong": "Something went wrong",
-  "@errorSomethingWrong": { "description": "Generic error title" }
+  "@errorSomethingWrong": { "description": "Generic error title" },
+
+  "addFeedTitle": "Add Feed Source",
+  "@addFeedTitle": { "description": "Add feed source page/sheet title" },
+
+  "addFeedTabUrl": "From URL",
+  "@addFeedTabUrl": { "description": "Tab label: add feed from a network URL" },
+
+  "addFeedTabFile": "From File",
+  "@addFeedTabFile": { "description": "Tab label: add feed from a local file" },
+
+  "addFeedUrlHint": "Enter script URL…",
+  "@addFeedUrlHint": { "description": "TextField hint for URL input" },
+
+  "addFeedUrlPreview": "Preview",
+  "@addFeedUrlPreview": { "description": "Button label: preview feed from URL" },
+
+  "addFeedPickFile": "Pick Script File",
+  "@addFeedPickFile": { "description": "Button label: open file picker for .lua script" },
+
+  "addFeedPreviewTitle": "Feed Summary",
+  "@addFeedPreviewTitle": { "description": "Section heading for the feed preview card" },
+
+  "addFeedAllowedDomains": "Accesses domains",
+  "@addFeedAllowedDomains": { "description": "Label for the allowed domains list in the feed preview" },
+
+  "addFeedNoDomainRestriction": "No domain restrictions",
+  "@addFeedNoDomainRestriction": { "description": "Shown when allowed_domains is empty" },
+
+  "addFeedIsUpgrade": "Upgrading {from} \u2192 {to}",
+  "@addFeedIsUpgrade": {
+    "description": "Shown when installing a feed that replaces an existing version",
+    "placeholders": {
+      "from": { "type": "String" },
+      "to": { "type": "String" }
+    }
+  },
+
+  "addFeedInstall": "Install",
+  "@addFeedInstall": { "description": "Button label: confirm feed installation" },
+
+  "addFeedSuccess": "Feed installed successfully",
+  "@addFeedSuccess": { "description": "Snackbar message on successful install" },
+
+  "addFeedErrorPreview": "Failed to preview feed",
+  "@addFeedErrorPreview": { "description": "Error message when preview fails" },
+
+  "addFeedErrorInstall": "Failed to install feed",
+  "@addFeedErrorInstall": { "description": "Error message when install fails" }
 }

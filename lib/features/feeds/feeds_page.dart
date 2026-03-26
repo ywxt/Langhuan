@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../src/bindings/signals/signals.dart';
+import 'add_feed_sheet.dart';
 import 'feed_providers.dart';
 
 // ---------------------------------------------------------------------------
@@ -78,6 +79,11 @@ class _FeedsPageState extends ConsumerState<FeedsPage> {
             ),
           ),
         ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => showAddFeedSheet(context),
+        tooltip: l10n.addFeedTitle,
+        child: const Icon(Icons.add),
       ),
       body: _buildBody(context, feedState, filtered, colorScheme, l10n),
     );

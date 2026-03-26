@@ -246,6 +246,16 @@ impl LuaFeed {
     /// Execute an HTTP request described by an [`HttpRequest`] and return an
     /// [`HttpResponse`].
     async fn execute_http(&self, req: &HttpRequest) -> Result<HttpResponse> {
+        // Enforce allowed_domains before making any network call.
+        if !self.meta.allowed_domains.is_empty()
+            && !domain_allowed(&req.url, &self.meta.allowed_domains)
+        {
+            return Err(crate::error::Error::DomainNotAllowed {
+                url: req.url.clone(),
+                allowed: self.meta.allowed_domains.clone(),
+            });
+        }
+
         let method = req.method.parse().unwrap_or(reqwest::Method::GET);
         let mut builder = self.client.request(method, &req.url);
 
@@ -287,6 +297,37 @@ impl LuaFeed {
             url,
         })
     }
+}
+
+// ---------------------------------------------------------------------------
+// Domain allowlist helper
+// ---------------------------------------------------------------------------
+
+/// Check whether the host of `url` is permitted by `allowed_domains`.
+///
+/// Matching rules:
+/// - Patterns starting with `*.` match any subdomain:
+///   `*.example.com` matches `cdn.example.com` and `a.b.example.com`.
+/// - All other patterns match the exact host (`example.com` == `example.com`).
+///
+/// Returns `true` if the host is allowed, `false` if the URL cannot be parsed
+/// or the host is not in the list.
+fn domain_allowed(url: &str, allowed_domains: &[String]) -> bool {
+    let parsed = match reqwest::Url::parse(url) {
+        Ok(u) => u,
+        Err(_) => return false,
+    };
+    let host = match parsed.host_str() {
+        Some(h) => h,
+        None => return false,
+    };
+    allowed_domains.iter().any(|pattern| {
+        if let Some(suffix) = pattern.strip_prefix("*.") {
+            host == suffix || host.ends_with(&format!(".{suffix}"))
+        } else {
+            host == pattern.as_str()
+        }
+    })
 }
 
 // ---------------------------------------------------------------------------

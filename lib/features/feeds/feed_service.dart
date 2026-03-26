@@ -47,6 +47,39 @@ class ChapterContentModel {
   final List<String> paragraphs;
 }
 
+@immutable
+class FeedPreviewModel {
+  const FeedPreviewModel({
+    required this.requestId,
+    required this.id,
+    required this.name,
+    required this.version,
+    required this.baseUrl,
+    required this.allowedDomains,
+    required this.isUpgrade,
+    this.author,
+    this.description,
+    this.currentVersion,
+    this.error,
+  });
+
+  final String requestId;
+  final String id;
+  final String name;
+  final String version;
+  final String? author;
+  final String? description;
+  final String baseUrl;
+  final List<String> allowedDomains;
+  final bool isUpgrade;
+  final String? currentVersion;
+
+  /// Non-null when the preview failed.
+  final String? error;
+
+  bool get hasError => error != null;
+}
+
 // ---------------------------------------------------------------------------
 // FeedService
 // ---------------------------------------------------------------------------
@@ -217,6 +250,66 @@ class FeedService {
         .where((pack) => pack.message.requestId == requestId)
         .first
         .then((pack) => pack.message);
+  }
+
+  // -------------------------------------------------------------------------
+  // Feed install
+  // -------------------------------------------------------------------------
+
+  /// Request a preview of a feed script from a remote [url].
+  ///
+  /// Returns a [Future] that resolves to a [FeedPreviewModel] once Rust has
+  /// downloaded and parsed the script.  Check [FeedPreviewModel.hasError] for
+  /// failures.
+  Future<FeedPreviewModel> previewFromUrl(String url) async {
+    final requestId = _nextId();
+    PreviewFeedFromUrl(requestId: requestId, url: url).sendSignalToRust();
+    return _awaitPreview(requestId);
+  }
+
+  /// Request a preview of a feed script from raw Lua [content] (local file).
+  Future<FeedPreviewModel> previewFromContent(String content) async {
+    final requestId = _nextId();
+    PreviewFeedFromContent(
+      requestId: requestId,
+      content: content,
+    ).sendSignalToRust();
+    return _awaitPreview(requestId);
+  }
+
+  /// Confirm installation of a previously previewed feed.
+  ///
+  /// [requestId] must match the one returned by the preceding preview call.
+  /// Returns a [Future] that resolves to the [FeedInstallResult] once Rust
+  /// finishes writing the script to disk and reloading the registry.
+  Future<FeedInstallResult> installFeed(String requestId) {
+    InstallFeedRequest(requestId: requestId).sendSignalToRust();
+    return FeedInstallResult.rustSignalStream
+        .where((pack) => pack.message.requestId == requestId)
+        .first
+        .then((pack) => pack.message);
+  }
+
+  Future<FeedPreviewModel> _awaitPreview(String requestId) {
+    return FeedPreviewResult.rustSignalStream
+        .where((pack) => pack.message.requestId == requestId)
+        .first
+        .then((pack) {
+          final msg = pack.message;
+          return FeedPreviewModel(
+            requestId: msg.requestId,
+            id: msg.id,
+            name: msg.name,
+            version: msg.version,
+            author: msg.author,
+            description: msg.description,
+            baseUrl: msg.baseUrl,
+            allowedDomains: List.unmodifiable(msg.allowedDomains),
+            isUpgrade: msg.isUpgrade,
+            currentVersion: msg.currentVersion,
+            error: msg.error,
+          );
+        });
   }
 
   // -------------------------------------------------------------------------

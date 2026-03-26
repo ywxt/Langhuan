@@ -108,4 +108,48 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get errorSomethingWrong => 'Something went wrong';
+
+  @override
+  String get addFeedTitle => 'Add Feed Source';
+
+  @override
+  String get addFeedTabUrl => 'From URL';
+
+  @override
+  String get addFeedTabFile => 'From File';
+
+  @override
+  String get addFeedUrlHint => 'Enter script URL…';
+
+  @override
+  String get addFeedUrlPreview => 'Preview';
+
+  @override
+  String get addFeedPickFile => 'Pick Script File';
+
+  @override
+  String get addFeedPreviewTitle => 'Feed Summary';
+
+  @override
+  String get addFeedAllowedDomains => 'Accesses domains';
+
+  @override
+  String get addFeedNoDomainRestriction => 'No domain restrictions';
+
+  @override
+  String addFeedIsUpgrade(String from, String to) {
+    return 'Upgrading $from → $to';
+  }
+
+  @override
+  String get addFeedInstall => 'Install';
+
+  @override
+  String get addFeedSuccess => 'Feed installed successfully';
+
+  @override
+  String get addFeedErrorPreview => 'Failed to preview feed';
+
+  @override
+  String get addFeedErrorInstall => 'Failed to install feed';
 }

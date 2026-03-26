@@ -19,6 +19,7 @@ use crate::error::{Error, Result};
 /// -- @base_url     https://example.com
 /// -- @charset      utf-8
 /// -- @content_type html
+/// -- @allowed_domains example.com, *.cdn.example.com
 /// -- ==/Feed==
 /// ```
 #[derive(Debug, Clone, Serialize)]
@@ -45,6 +46,12 @@ pub struct FeedMeta {
     /// Expected response content type hint (`"html"` or `"json"`).
     /// Defaults to `"html"` if omitted.
     pub content_type: String,
+    /// Allowed domain patterns for HTTP requests made by this feed.
+    ///
+    /// An empty list means **no restriction** (all domains are allowed).
+    /// Each pattern is either an exact hostname (`example.com`) or a wildcard
+    /// subdomain pattern (`*.example.com`).
+    pub allowed_domains: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -177,6 +184,7 @@ struct FeedMetaBuilder {
     base_url: Option<String>,
     charset: Option<String>,
     content_type: Option<String>,
+    allowed_domains: Vec<String>,
 }
 
 impl FeedMetaBuilder {
@@ -203,6 +211,13 @@ impl FeedMetaBuilder {
             ("base_url", None) => self.base_url = Some(value),
             ("charset", None) => self.charset = Some(value),
             ("content_type", None) => self.content_type = Some(value),
+            ("allowed_domains", None) => {
+                self.allowed_domains = value
+                    .split(',')
+                    .map(|s| s.trim().to_owned())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+            }
             _ => {
                 // Unknown keys are silently ignored for forward compatibility.
             }
@@ -232,6 +247,7 @@ impl FeedMetaBuilder {
             base_url: require(self.base_url, "base_url")?,
             charset: self.charset.unwrap_or_else(|| "utf-8".to_owned()),
             content_type: self.content_type.unwrap_or_else(|| "html".to_owned()),
+            allowed_domains: self.allowed_domains,
         })
     }
 }

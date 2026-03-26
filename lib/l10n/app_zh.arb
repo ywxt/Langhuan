@@ -39,5 +39,20 @@
   "profileTitle": "我的",
   "profileSubtitle": "管理你的帳號設置",
 
-  "errorSomethingWrong": "出現錯誤"
+  "errorSomethingWrong": "出現錯誤",
+
+  "addFeedTitle": "添加書源",
+  "addFeedTabUrl": "從網絡",
+  "addFeedTabFile": "從本地",
+  "addFeedUrlHint": "輸入腳本地址…",
+  "addFeedUrlPreview": "預覽",
+  "addFeedPickFile": "選擇腳本文件",
+  "addFeedPreviewTitle": "書源摘要",
+  "addFeedAllowedDomains": "允許訪問的域名",
+  "addFeedNoDomainRestriction": "無域名限制",
+  "addFeedIsUpgrade": "升級 {from} \u2192 {to}",
+  "addFeedInstall": "安裝",
+  "addFeedSuccess": "書源安裝成功",
+  "addFeedErrorPreview": "預覽書源失敗",
+  "addFeedErrorInstall": "安裝書源失敗"
 }

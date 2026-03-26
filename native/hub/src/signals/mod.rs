@@ -168,3 +168,70 @@ pub struct FeedListResult {
     pub items: Vec<FeedMetaItem>,
 }
 
+// ---------------------------------------------------------------------------
+// Feed install signals — Dart → Rust (requests)
+// ---------------------------------------------------------------------------
+
+/// Request a preview of a feed script from a remote URL.
+/// Rust will download the script, parse its metadata, and respond with
+/// a [`FeedPreviewResult`].
+#[derive(Deserialize, DartSignal)]
+pub struct PreviewFeedFromUrl {
+    pub request_id: String,
+    pub url: String,
+}
+
+/// Request a preview of a feed script from raw Lua content (local file).
+/// Rust will parse the metadata and respond with a [`FeedPreviewResult`].
+#[derive(Deserialize, DartSignal)]
+pub struct PreviewFeedFromContent {
+    pub request_id: String,
+    pub content: String,
+}
+
+/// Confirm installation of a previously previewed feed.
+///
+/// `request_id` must match the one from the preceding preview request.
+/// Rust will write the script to disk, update `registry.toml`, reload the
+/// registry, and respond with a [`FeedInstallResult`].
+#[derive(Deserialize, DartSignal)]
+pub struct InstallFeedRequest {
+    pub request_id: String,
+}
+
+// ---------------------------------------------------------------------------
+// Feed install signals — Rust → Dart (responses)
+// ---------------------------------------------------------------------------
+
+/// Summary of a parsed feed script, sent in response to a preview request.
+///
+/// On success `error` is `None` and all other fields are populated.
+/// On failure `error` is `Some(message)` and other fields may be empty.
+#[derive(Serialize, RustSignal)]
+pub struct FeedPreviewResult {
+    pub request_id: String,
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub author: Option<String>,
+    pub description: Option<String>,
+    pub base_url: String,
+    /// Allowed domain patterns declared by the feed (`@allowed_domains`).
+    /// Empty means no restriction.
+    pub allowed_domains: Vec<String>,
+    /// `true` if a feed with the same `id` is already installed (upgrade flow).
+    pub is_upgrade: bool,
+    /// The currently installed version, populated only when `is_upgrade` is `true`.
+    pub current_version: Option<String>,
+    /// Human-readable error message; present only on failure.
+    pub error: Option<String>,
+}
+
+/// Result of a [`InstallFeedRequest`].
+#[derive(Serialize, RustSignal)]
+pub struct FeedInstallResult {
+    pub request_id: String,
+    pub success: bool,
+    pub error: Option<String>,
+}
+

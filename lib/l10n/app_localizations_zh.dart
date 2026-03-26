@@ -9,7 +9,7 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
-  String get appName => '瀾幻';
+  String get appName => '琅嬛';
 
   @override
   String get navBookshelf => '書架';
@@ -106,4 +106,48 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get errorSomethingWrong => '出現錯誤';
+
+  @override
+  String get addFeedTitle => '添加書源';
+
+  @override
+  String get addFeedTabUrl => '從網絡';
+
+  @override
+  String get addFeedTabFile => '從本地';
+
+  @override
+  String get addFeedUrlHint => '輸入腳本地址…';
+
+  @override
+  String get addFeedUrlPreview => '預覽';
+
+  @override
+  String get addFeedPickFile => '選擇腳本文件';
+
+  @override
+  String get addFeedPreviewTitle => '書源摘要';
+
+  @override
+  String get addFeedAllowedDomains => '允許訪問的域名';
+
+  @override
+  String get addFeedNoDomainRestriction => '無域名限制';
+
+  @override
+  String addFeedIsUpgrade(String from, String to) {
+    return '升級 $from → $to';
+  }
+
+  @override
+  String get addFeedInstall => '安裝';
+
+  @override
+  String get addFeedSuccess => '書源安裝成功';
+
+  @override
+  String get addFeedErrorPreview => '預覽書源失敗';
+
+  @override
+  String get addFeedErrorInstall => '安裝書源失敗';
 }

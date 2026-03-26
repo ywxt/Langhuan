@@ -283,6 +283,90 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Something went wrong'**
   String get errorSomethingWrong;
+
+  /// Add feed source page/sheet title
+  ///
+  /// In en, this message translates to:
+  /// **'Add Feed Source'**
+  String get addFeedTitle;
+
+  /// Tab label: add feed from a network URL
+  ///
+  /// In en, this message translates to:
+  /// **'From URL'**
+  String get addFeedTabUrl;
+
+  /// Tab label: add feed from a local file
+  ///
+  /// In en, this message translates to:
+  /// **'From File'**
+  String get addFeedTabFile;
+
+  /// TextField hint for URL input
+  ///
+  /// In en, this message translates to:
+  /// **'Enter script URL…'**
+  String get addFeedUrlHint;
+
+  /// Button label: preview feed from URL
+  ///
+  /// In en, this message translates to:
+  /// **'Preview'**
+  String get addFeedUrlPreview;
+
+  /// Button label: open file picker for .lua script
+  ///
+  /// In en, this message translates to:
+  /// **'Pick Script File'**
+  String get addFeedPickFile;
+
+  /// Section heading for the feed preview card
+  ///
+  /// In en, this message translates to:
+  /// **'Feed Summary'**
+  String get addFeedPreviewTitle;
+
+  /// Label for the allowed domains list in the feed preview
+  ///
+  /// In en, this message translates to:
+  /// **'Accesses domains'**
+  String get addFeedAllowedDomains;
+
+  /// Shown when allowed_domains is empty
+  ///
+  /// In en, this message translates to:
+  /// **'No domain restrictions'**
+  String get addFeedNoDomainRestriction;
+
+  /// Shown when installing a feed that replaces an existing version
+  ///
+  /// In en, this message translates to:
+  /// **'Upgrading {from} → {to}'**
+  String addFeedIsUpgrade(String from, String to);
+
+  /// Button label: confirm feed installation
+  ///
+  /// In en, this message translates to:
+  /// **'Install'**
+  String get addFeedInstall;
+
+  /// Snackbar message on successful install
+  ///
+  /// In en, this message translates to:
+  /// **'Feed installed successfully'**
+  String get addFeedSuccess;
+
+  /// Error message when preview fails
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to preview feed'**
+  String get addFeedErrorPreview;
+
+  /// Error message when install fails
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to install feed'**
+  String get addFeedErrorInstall;
 }
 
 class _AppLocalizationsDelegate

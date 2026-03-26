@@ -56,6 +56,20 @@ pub enum Error {
         /// The duplicated feed ID.
         id: String,
     },
+
+    /// An HTTP request was blocked because the target domain is not in the
+    /// feed's `allowed_domains` list.
+    #[error("domain not allowed: {url} (allowed: {allowed:?})")]
+    DomainNotAllowed {
+        /// The blocked URL.
+        url: String,
+        /// The list of allowed domain patterns from the feed metadata.
+        allowed: Vec<String>,
+    },
+
+    /// A write to the registry directory or script file failed.
+    #[error("registry write error: {0}")]
+    RegistryWrite(String),
 }
 
 impl Error {
@@ -84,7 +98,9 @@ impl Error {
             | Error::RegistryNotFound(_)
             | Error::RegistryParse { .. }
             | Error::FeedNotFound { .. }
-            | Error::DuplicateFeedId { .. } => false,
+            | Error::DuplicateFeedId { .. }
+            | Error::DomainNotAllowed { .. }
+            | Error::RegistryWrite(_) => false,
         }
     }
 }

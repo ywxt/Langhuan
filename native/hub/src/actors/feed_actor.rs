@@ -20,7 +20,7 @@
 //! Retry with exponential back-off is handled inside `langhuan::LuaFeed`.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use langhuan::feed::Feed;
@@ -34,8 +34,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::signals::{
     ChapterContentItem, ChapterContentRequest, ChapterInfoItem, ChaptersRequest, FeedCancelRequest,
-    FeedListResult, FeedMetaItem, FeedStreamEnd, FeedStreamStatus, ListFeedsRequest,
-    ScriptDirectorySet, SearchRequest, SearchResultItem, SetScriptDirectory,
+    FeedInstallResult, FeedListResult, FeedMetaItem, FeedPreviewResult, FeedStreamEnd,
+    FeedStreamStatus, InstallFeedRequest, ListFeedsRequest, PreviewFeedFromContent,
+    PreviewFeedFromUrl, ScriptDirectorySet, SearchRequest, SearchResultItem, SetScriptDirectory,
 };
 
 // ---------------------------------------------------------------------------
@@ -54,6 +55,12 @@ pub struct FeedActor {
     /// Live tasks keyed by `request_id`.  Each entry holds a cancellation
     /// token (to request cooperative shutdown) and a join handle (for cleanup).
     tasks: HashMap<String, (CancellationToken, JoinHandle<()>)>,
+    /// Base directory used by the current registry.  Set when
+    /// [`handle_set_directory`] succeeds; needed by [`handle_install`].
+    scripts_dir: Option<PathBuf>,
+    /// Pending feed installs awaiting user confirmation, keyed by `request_id`.
+    /// Maps to the raw Lua script content returned by the preview step.
+    pending_installs: HashMap<String, String>,
 }
 
 impl FeedActor {
@@ -63,6 +70,8 @@ impl FeedActor {
             registry: None,
             feeds: HashMap::new(),
             tasks: HashMap::new(),
+            scripts_dir: None,
+            pending_installs: HashMap::new(),
         }
     }
 
@@ -91,6 +100,9 @@ impl FeedActor {
                 return;
             }
         };
+
+        // Store the scripts directory for use by install.
+        self.scripts_dir = Some(PathBuf::from(&req.path));
 
         // Eagerly compile every feed listed in the registry.
         let mut feeds = HashMap::new();
@@ -246,6 +258,162 @@ impl FeedActor {
     /// Call this periodically or after receiving a request.
     pub fn cleanup_finished(&mut self) {
         self.tasks.retain(|_, (_, handle)| !handle.is_finished());
+    }
+
+    // -----------------------------------------------------------------------
+    // Feed install handlers
+    // -----------------------------------------------------------------------
+
+    /// Preview a feed script fetched from a remote URL.
+    pub async fn handle_preview_from_url(&mut self, req: PreviewFeedFromUrl) {
+        let content = match langhuan::script::downloader::download_script(&req.url).await {
+            Ok(c) => c,
+            Err(e) => {
+                FeedPreviewResult {
+                    request_id: req.request_id,
+                    id: String::new(),
+                    name: String::new(),
+                    version: String::new(),
+                    author: None,
+                    description: None,
+                    base_url: String::new(),
+                    allowed_domains: vec![],
+                    is_upgrade: false,
+                    current_version: None,
+                    error: Some(e.to_string()),
+                }
+                .send_signal_to_dart();
+                return;
+            }
+        };
+        self.emit_preview(req.request_id, content);
+    }
+
+    /// Preview a feed script from raw Lua content (local file).
+    pub fn handle_preview_from_content(&mut self, req: PreviewFeedFromContent) {
+        self.emit_preview(req.request_id, req.content);
+    }
+
+    /// Confirm installation of a previously previewed feed.
+    pub async fn handle_install(&mut self, req: InstallFeedRequest) {
+        let content = match self.pending_installs.remove(&req.request_id) {
+            Some(c) => c,
+            None => {
+                FeedInstallResult {
+                    request_id: req.request_id,
+                    success: false,
+                    error: Some("no pending preview for this request_id".to_owned()),
+                }
+                .send_signal_to_dart();
+                return;
+            }
+        };
+
+        let scripts_dir = match &self.scripts_dir {
+            Some(d) => d.clone(),
+            None => {
+                FeedInstallResult {
+                    request_id: req.request_id,
+                    success: false,
+                    error: Some("script directory not set".to_owned()),
+                }
+                .send_signal_to_dart();
+                return;
+            }
+        };
+
+        if let Err(e) =
+            langhuan::script::registry::install_feed(&scripts_dir, &content).await
+        {
+            FeedInstallResult {
+                request_id: req.request_id,
+                success: false,
+                error: Some(e.to_string()),
+            }
+            .send_signal_to_dart();
+            return;
+        }
+
+        // Reload the registry so the new feed is immediately available.
+        match ScriptRegistry::load(&scripts_dir).await {
+            Ok(registry) => {
+                let mut feeds = HashMap::new();
+                for entry in registry.list_entries() {
+                    if let Ok(script) = registry.get_script(&entry.id).await
+                        && let Ok(feed) = self.engine.load_feed(&script).await {
+                            feeds.insert(entry.id.clone(), Arc::new(feed));
+                        }
+                }
+                self.registry = Some(Arc::new(registry));
+                self.feeds = feeds;
+            }
+            Err(_) => {
+                // Install succeeded; registry reload failure is non-fatal —
+                // user can call SetScriptDirectory again to force a reload.
+            }
+        }
+
+        FeedInstallResult {
+            request_id: req.request_id,
+            success: true,
+            error: None,
+        }
+        .send_signal_to_dart();
+    }
+
+    // -----------------------------------------------------------------------
+    // Private helpers
+    // -----------------------------------------------------------------------
+
+    /// Parse `content`, cache it as a pending install, and send a
+    /// [`FeedPreviewResult`] to Dart.
+    fn emit_preview(&mut self, request_id: String, content: String) {
+        let (meta, _) = match langhuan::script::meta::parse_meta(&content) {
+            Ok(m) => m,
+            Err(e) => {
+                FeedPreviewResult {
+                    request_id,
+                    id: String::new(),
+                    name: String::new(),
+                    version: String::new(),
+                    author: None,
+                    description: None,
+                    base_url: String::new(),
+                    allowed_domains: vec![],
+                    is_upgrade: false,
+                    current_version: None,
+                    error: Some(e.to_string()),
+                }
+                .send_signal_to_dart();
+                return;
+            }
+        };
+
+        let (is_upgrade, current_version) = match &self.registry {
+            Some(reg) => (
+                reg.has_feed(&meta.id),
+                reg.get_entry(&meta.id).map(|e| e.version.clone()),
+            ),
+            None => (false, None),
+        };
+
+        // Cache the script content so `handle_install` can write it to disk.
+        self.pending_installs.insert(request_id.clone(), content);
+
+        FeedPreviewResult {
+            request_id,
+            id: meta.id.clone(),
+            name: meta.name.clone(),
+            version: meta.version.clone(),
+            author: meta.author.clone(),
+            description: meta.description.clone(),
+            base_url: meta.base_url.clone(),
+            allowed_domains: meta.allowed_domains.clone(),
+            is_upgrade,
+            current_version,
+            error: None,
+        }
+        .send_signal_to_dart();
     }
 }
 

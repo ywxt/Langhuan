@@ -25,7 +25,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 
@@ -34,7 +34,7 @@ use crate::error::{Error, Result};
 // ---------------------------------------------------------------------------
 
 /// A single entry in `registry.toml`.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RegistryEntry {
     /// Unique identifier for this feed (must match the `@id` in the script header).
     pub id: String,
@@ -50,7 +50,7 @@ pub struct RegistryEntry {
 }
 
 /// Root structure of `registry.toml`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 struct RegistryFile {
     #[serde(default)]
     feeds: Vec<RegistryEntry>,
@@ -140,11 +140,93 @@ impl ScriptRegistry {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+
+    /// Return `true` if a feed with `feed_id` is currently registered.
+    pub fn has_feed(&self, feed_id: &str) -> bool {
+        self.entries.contains_key(feed_id)
+    }
+
+    /// Return the [`RegistryEntry`] for `feed_id`, or `None` if not found.
+    pub fn get_entry(&self, feed_id: &str) -> Option<&RegistryEntry> {
+        self.entries.get(feed_id)
+    }
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// install_feed — write a new or upgraded script to disk
 // ---------------------------------------------------------------------------
+
+/// Install or upgrade a feed script into the registry directory.
+///
+/// Steps:
+/// 1. Parse metadata from `content` via [`super::meta::parse_meta`].
+/// 2. Write the Lua file to `<base_dir>/<feed_id>/<version>.lua`.
+/// 3. Update `<base_dir>/registry.toml`, replacing any existing entry with
+///    the same `id` (upgrade) or appending a new entry.
+/// 4. Return the new [`RegistryEntry`].
+///
+/// # Errors
+/// - [`Error::ScriptParse`] / [`Error::InvalidFeed`] — script header invalid.
+/// - [`Error::RegistryWrite`] — a filesystem write failed.
+/// - [`Error::RegistryParse`] — existing `registry.toml` is malformed.
+pub async fn install_feed(base_dir: &Path, content: &str) -> Result<RegistryEntry> {
+    // 1. Parse metadata.
+    let (feed_meta, _) = super::meta::parse_meta(content)?;
+
+    let feed_id = &feed_meta.id;
+    let version = &feed_meta.version;
+
+    // 2. Write the Lua script file.
+    let script_dir = base_dir.join(feed_id.as_str());
+    tokio::fs::create_dir_all(&script_dir)
+        .await
+        .map_err(|e| Error::RegistryWrite(e.to_string()))?;
+
+    let rel_path = format!("{feed_id}/{version}.lua");
+    let script_path = base_dir.join(&rel_path);
+    tokio::fs::write(&script_path, content)
+        .await
+        .map_err(|e| Error::RegistryWrite(e.to_string()))?;
+
+    // 3. Read (or create) registry.toml, upsert the entry, and write back.
+    let registry_path = base_dir.join("registry.toml");
+    let mut registry_file: RegistryFile = if registry_path.exists() {
+        let toml_str = tokio::fs::read_to_string(&registry_path)
+            .await
+            .map_err(|e| Error::RegistryWrite(e.to_string()))?;
+        toml::from_str(&toml_str).map_err(|e| Error::RegistryParse {
+            message: e.to_string(),
+        })?
+    } else {
+        RegistryFile::default()
+    };
+
+    let new_entry = RegistryEntry {
+        id: feed_id.clone(),
+        name: feed_meta.name.clone(),
+        version: version.clone(),
+        author: feed_meta.author.clone(),
+        file: rel_path,
+    };
+
+    // Upsert: replace existing entry with same id, or append.
+    match registry_file
+        .feeds
+        .iter_mut()
+        .find(|e| e.id == *feed_id)
+    {
+        Some(existing) => *existing = new_entry.clone(),
+        None => registry_file.feeds.push(new_entry.clone()),
+    }
+
+    let toml_content =
+        toml::to_string_pretty(&registry_file).map_err(|e| Error::RegistryWrite(e.to_string()))?;
+    tokio::fs::write(&registry_path, toml_content)
+        .await
+        .map_err(|e| Error::RegistryWrite(e.to_string()))?;
+
+    Ok(new_entry)
+}
 
 #[cfg(test)]
 mod tests {
