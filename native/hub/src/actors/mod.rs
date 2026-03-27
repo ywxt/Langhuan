@@ -16,7 +16,8 @@ use tokio::spawn;
 
 use crate::signals::{
     ChapterContentRequest, ChaptersRequest, FeedCancelRequest, InstallFeedRequest,
-    ListFeedsRequest, PreviewFeedFromContent, PreviewFeedFromUrl, SearchRequest, SetScriptDirectory,
+    ListFeedsRequest, PreviewFeedFromFile, PreviewFeedFromUrl, SearchRequest,
+    SetScriptDirectory,
 };
 
 // Uncomment below to target the web.
@@ -61,7 +62,7 @@ async fn run_feed_actor() {
     let set_dir_rx = SetScriptDirectory::get_dart_signal_receiver();
     let list_feeds_rx = ListFeedsRequest::get_dart_signal_receiver();
     let preview_url_rx = PreviewFeedFromUrl::get_dart_signal_receiver();
-    let preview_content_rx = PreviewFeedFromContent::get_dart_signal_receiver();
+    let preview_file_rx = PreviewFeedFromFile::get_dart_signal_receiver();
     let install_rx = InstallFeedRequest::get_dart_signal_receiver();
 
     loop {
@@ -87,8 +88,8 @@ async fn run_feed_actor() {
             Some(pack) = preview_url_rx.recv() => {
                 actor.handle_preview_from_url(pack.message).await;
             }
-            Some(pack) = preview_content_rx.recv() => {
-                actor.handle_preview_from_content(pack.message);
+            Some(pack) = preview_file_rx.recv() => {
+                actor.handle_preview_from_file(pack.message).await;
             }
             Some(pack) = install_rx.recv() => {
                 actor.handle_install(pack.message).await;

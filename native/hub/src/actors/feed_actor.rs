@@ -32,10 +32,11 @@ use tokio::task::JoinHandle;
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 
+use crate::localize_error;
 use crate::signals::{
     ChapterContentItem, ChapterContentRequest, ChapterInfoItem, ChaptersRequest, FeedCancelRequest,
     FeedInstallResult, FeedListResult, FeedMetaItem, FeedPreviewResult, FeedStreamEnd,
-    FeedStreamStatus, InstallFeedRequest, ListFeedsRequest, PreviewFeedFromContent,
+    FeedStreamStatus, InstallFeedRequest, ListFeedsRequest, PreviewFeedFromFile,
     PreviewFeedFromUrl, ScriptDirectorySet, SearchRequest, SearchResultItem, SetScriptDirectory,
 };
 
@@ -88,21 +89,22 @@ impl FeedActor {
     /// On registry-load failure the **old state is kept** (degraded-mode
     /// protection) and an error signal is sent.
     pub async fn handle_set_directory(&mut self, req: SetScriptDirectory) {
+        // Always record the directory so that install works even when the
+        // registry.toml does not exist yet (first-run / empty directory).
+        self.scripts_dir = Some(PathBuf::from(&req.path));
+
         let registry = match ScriptRegistry::load(Path::new(&req.path)).await {
             Ok(r) => r,
             Err(e) => {
                 ScriptDirectorySet {
                     success: false,
                     feed_count: 0,
-                    error: Some(e.to_string()),
+                    error: Some(localize_error(&e)),
                 }
                 .send_signal_to_dart();
                 return;
             }
         };
-
-        // Store the scripts directory for use by install.
-        self.scripts_dir = Some(PathBuf::from(&req.path));
 
         // Eagerly compile every feed listed in the registry.
         let mut feeds = HashMap::new();
@@ -231,9 +233,9 @@ impl FeedActor {
             Some(feed) => Some(Arc::clone(feed)),
             None => {
                 let msg = if self.registry.is_none() {
-                    "script directory not set".to_owned()
+                    t!("error.script_dir_not_set").to_string()
                 } else {
-                    format!("feed '{}' not found or failed to load", feed_id)
+                    t!("error.feed_unavailable", id = feed_id).to_string()
                 };
                 emit_end(request_id, FeedStreamStatus::Failed, Some(msg));
                 None
@@ -280,7 +282,7 @@ impl FeedActor {
                     allowed_domains: vec![],
                     is_upgrade: false,
                     current_version: None,
-                    error: Some(e.to_string()),
+                    error: Some(localize_error(&e)),
                 }
                 .send_signal_to_dart();
                 return;
@@ -289,9 +291,30 @@ impl FeedActor {
         self.emit_preview(req.request_id, content);
     }
 
-    /// Preview a feed script from raw Lua content (local file).
-    pub fn handle_preview_from_content(&mut self, req: PreviewFeedFromContent) {
-        self.emit_preview(req.request_id, req.content);
+    /// Preview a feed script read from a local file path.
+    pub async fn handle_preview_from_file(&mut self, req: PreviewFeedFromFile) {
+        let content = match tokio::fs::read_to_string(&req.path).await {
+            Ok(c) => c,
+            Err(e) => {
+                let msg = t!("error.file_read", error = e.to_string()).to_string();
+                FeedPreviewResult {
+                    request_id: req.request_id,
+                    id: String::new(),
+                    name: String::new(),
+                    version: String::new(),
+                    author: None,
+                    description: None,
+                    base_url: String::new(),
+                    allowed_domains: vec![],
+                    is_upgrade: false,
+                    current_version: None,
+                    error: Some(msg),
+                }
+                .send_signal_to_dart();
+                return;
+            }
+        };
+        self.emit_preview(req.request_id, content);
     }
 
     /// Confirm installation of a previously previewed feed.
@@ -302,7 +325,7 @@ impl FeedActor {
                 FeedInstallResult {
                     request_id: req.request_id,
                     success: false,
-                    error: Some("no pending preview for this request_id".to_owned()),
+                    error: Some(t!("error.no_pending_preview").to_string()),
                 }
                 .send_signal_to_dart();
                 return;
@@ -315,20 +338,18 @@ impl FeedActor {
                 FeedInstallResult {
                     request_id: req.request_id,
                     success: false,
-                    error: Some("script directory not set".to_owned()),
+                    error: Some(t!("error.script_dir_not_set").to_string()),
                 }
                 .send_signal_to_dart();
                 return;
             }
         };
 
-        if let Err(e) =
-            langhuan::script::registry::install_feed(&scripts_dir, &content).await
-        {
+        if let Err(e) = langhuan::script::registry::install_feed(&scripts_dir, &content).await {
             FeedInstallResult {
                 request_id: req.request_id,
                 success: false,
-                error: Some(e.to_string()),
+                error: Some(localize_error(&e)),
             }
             .send_signal_to_dart();
             return;
@@ -340,9 +361,10 @@ impl FeedActor {
                 let mut feeds = HashMap::new();
                 for entry in registry.list_entries() {
                     if let Ok(script) = registry.get_script(&entry.id).await
-                        && let Ok(feed) = self.engine.load_feed(&script).await {
-                            feeds.insert(entry.id.clone(), Arc::new(feed));
-                        }
+                        && let Ok(feed) = self.engine.load_feed(&script).await
+                    {
+                        feeds.insert(entry.id.clone(), Arc::new(feed));
+                    }
                 }
                 self.registry = Some(Arc::new(registry));
                 self.feeds = feeds;
@@ -382,7 +404,7 @@ impl FeedActor {
                     allowed_domains: vec![],
                     is_upgrade: false,
                     current_version: None,
-                    error: Some(e.to_string()),
+                    error: Some(localize_error(&e)),
                 }
                 .send_signal_to_dart();
                 return;

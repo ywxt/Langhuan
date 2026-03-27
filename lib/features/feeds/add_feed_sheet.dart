@@ -46,20 +46,16 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   Future<void> _pickFile() async {
     setState(() => _pickingFile = true);
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.any,
-        withData: true,
-      );
+      final result = await FilePicker.platform.pickFiles(type: FileType.any);
       if (result == null || result.files.isEmpty) return;
-      final bytes = result.files.first.bytes;
-      if (bytes == null) return;
-      final content = String.fromCharCodes(bytes);
+      final path = result.files.first.path;
+      if (path == null) return;
       if (!mounted) return;
       Navigator.of(context).pop();
       if (!widget.parentContext.mounted) return;
       showDialog<void>(
         context: widget.parentContext,
-        builder: (_) => _AddFeedDialog(initialContent: content),
+        builder: (_) => _AddFeedDialog(initialPath: path),
       );
     } finally {
       if (mounted) setState(() => _pickingFile = false);
@@ -117,10 +113,10 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
 // ---------------------------------------------------------------------------
 
 class _AddFeedDialog extends ConsumerStatefulWidget {
-  const _AddFeedDialog({this.initialContent});
+  const _AddFeedDialog({this.initialPath});
 
-  /// When set, the dialog immediately previews this Lua content (file mode).
-  final String? initialContent;
+  /// When set, Rust will read and preview the script at this file path.
+  final String? initialPath;
 
   @override
   ConsumerState<_AddFeedDialog> createState() => _AddFeedDialogState();
@@ -129,7 +125,7 @@ class _AddFeedDialog extends ConsumerStatefulWidget {
 class _AddFeedDialogState extends ConsumerState<_AddFeedDialog> {
   final _urlController = TextEditingController();
 
-  bool get _isFileMode => widget.initialContent != null;
+  bool get _isFileMode => widget.initialPath != null;
 
   @override
   void initState() {
@@ -138,9 +134,7 @@ class _AddFeedDialogState extends ConsumerState<_AddFeedDialog> {
       if (!mounted) return;
       ref.read(addFeedProvider.notifier).reset();
       if (_isFileMode) {
-        ref
-            .read(addFeedProvider.notifier)
-            .previewFromContent(widget.initialContent!);
+        ref.read(addFeedProvider.notifier).previewFromFile(widget.initialPath!);
       }
     });
   }

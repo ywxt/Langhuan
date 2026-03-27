@@ -181,12 +181,22 @@ pub struct PreviewFeedFromUrl {
     pub url: String,
 }
 
-/// Request a preview of a feed script from raw Lua content (local file).
-/// Rust will parse the metadata and respond with a [`FeedPreviewResult`].
+/// Request a preview of a feed script from a local file path.
+/// Rust will read the file, parse its metadata, and respond with a
+/// [`FeedPreviewResult`].
 #[derive(Deserialize, DartSignal)]
-pub struct PreviewFeedFromContent {
+pub struct PreviewFeedFromFile {
     pub request_id: String,
-    pub content: String,
+    /// Absolute path to the Lua script file on the device.
+    pub path: String,
+}
+
+/// Set the locale used for Rust-side error messages.
+/// Dart should call this once at startup and whenever the locale changes.
+#[derive(Deserialize, DartSignal)]
+pub struct SetLocale {
+    /// BCP 47 locale tag, e.g. `"zh"`, `"zh-TW"`, `"en"`.
+    pub locale: String,
 }
 
 /// Confirm installation of a previously previewed feed.

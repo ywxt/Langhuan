@@ -56,10 +56,10 @@ class AddFeedNotifier extends Notifier<AddFeedState> {
     }
   }
 
-  /// Preview a feed script from raw Lua [content] (local file).
-  Future<void> previewFromContent(String content) async {
+  /// Preview a feed script from a local file [path] (Rust reads the file).
+  Future<void> previewFromFile(String path) async {
     state = const AddFeedLoading();
-    final preview = await FeedService.instance.previewFromContent(content);
+    final preview = await FeedService.instance.previewFromFile(path);
     if (preview.hasError) {
       state = AddFeedError(message: preview.error!);
     } else {

@@ -267,13 +267,12 @@ class FeedService {
     return _awaitPreview(requestId);
   }
 
-  /// Request a preview of a feed script from raw Lua [content] (local file).
-  Future<FeedPreviewModel> previewFromContent(String content) async {
+  /// Request a preview of a feed script from a local file [path].
+  /// Rust reads the file, decodes it as UTF-8, and responds with a
+  /// [FeedPreviewModel].  Check [FeedPreviewModel.hasError] for failures.
+  Future<FeedPreviewModel> previewFromFile(String path) async {
     final requestId = _nextId();
-    PreviewFeedFromContent(
-      requestId: requestId,
-      content: content,
-    ).sendSignalToRust();
+    PreviewFeedFromFile(requestId: requestId, path: path).sendSignalToRust();
     return _awaitPreview(requestId);
   }
 
