@@ -167,6 +167,8 @@ pub struct FeedMetaItem {
     pub name: String,
     pub version: String,
     pub author: Option<String>,
+    /// Compile error from `load_feed`, present only when the script failed to load.
+    pub error: Option<String>,
 }
 
 /// Response to [`ListFeedsRequest`] — contains all registered feeds.

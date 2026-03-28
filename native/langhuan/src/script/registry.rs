@@ -78,7 +78,7 @@ impl ScriptRegistry {
     /// - [`Error::RegistryParse`] — the TOML is malformed.
     /// - [`Error::DuplicateFeedId`] — two entries share the same `id`.
     pub async fn load(base_dir: &Path) -> Result<Self> {
-        let registry_path = base_dir.join("registry.toml");
+        let registry_path = registry_path(base_dir);
 
         let content = tokio::fs::read_to_string(&registry_path)
             .await
@@ -156,6 +156,75 @@ impl ScriptRegistry {
 // install_feed — write a new or upgraded script to disk
 // ---------------------------------------------------------------------------
 
+/// Return the canonical path to `registry.toml` inside `base_dir`.
+#[inline]
+fn registry_path(base_dir: &Path) -> PathBuf {
+    base_dir.join("registry.toml")
+}
+
+/// Ensure `<base_dir>/registry.toml` exists, creating it empty if necessary.
+///
+/// # Errors
+/// - [`Error::RegistryWrite`] — the file could not be created.
+pub async fn ensure_registry(base_dir: &Path) -> Result<()> {
+    let registry_path = registry_path(base_dir);
+    if !registry_path.exists() {
+        let empty = toml::to_string_pretty(&RegistryFile::default())
+            .map_err(|e| Error::RegistryWrite(e.to_string()))?;
+        tokio::fs::write(&registry_path, empty)
+            .await
+            .map_err(|e| Error::RegistryWrite(e.to_string()))?;
+    }
+    Ok(())
+}
+
+/// Remove a feed from the registry, rolling back both the TOML entry and the
+/// script file on disk.
+///
+/// # Errors
+/// - [`Error::RegistryNotFound`] — `registry.toml` does not exist.
+/// - [`Error::RegistryParse`] — `registry.toml` is malformed.
+/// - [`Error::FeedNotFound`] — no entry with `feed_id` exists.
+/// - [`Error::RegistryWrite`] — a filesystem write failed.
+pub async fn remove_feed(base_dir: &Path, feed_id: &str) -> Result<()> {
+    let registry_path = registry_path(base_dir);
+
+    let toml_str = tokio::fs::read_to_string(&registry_path)
+        .await
+        .map_err(Error::RegistryNotFound)?;
+
+    let mut registry_file: RegistryFile =
+        toml::from_str(&toml_str).map_err(|e| Error::RegistryParse {
+            message: e.to_string(),
+        })?;
+
+    let pos = registry_file
+        .feeds
+        .iter()
+        .position(|e| e.id == feed_id)
+        .ok_or_else(|| Error::FeedNotFound {
+            id: feed_id.to_owned(),
+        })?;
+
+    let entry = registry_file.feeds.remove(pos);
+
+    let toml_content =
+        toml::to_string_pretty(&registry_file).map_err(|e| Error::RegistryWrite(e.to_string()))?;
+    tokio::fs::write(&registry_path, toml_content)
+        .await
+        .map_err(|e| Error::RegistryWrite(e.to_string()))?;
+
+    // Best-effort: delete the script file; ignore NotFound.
+    let script_path = base_dir.join(&entry.file);
+    if let Err(e) = tokio::fs::remove_file(&script_path).await
+        && e.kind() != std::io::ErrorKind::NotFound
+    {
+        return Err(Error::RegistryWrite(e.to_string()));
+    }
+
+    Ok(())
+}
+
 /// Install or upgrade a feed script into the registry directory.
 ///
 /// Steps:
@@ -189,7 +258,7 @@ pub async fn install_feed(base_dir: &Path, content: &str) -> Result<RegistryEntr
         .map_err(|e| Error::RegistryWrite(e.to_string()))?;
 
     // 3. Read (or create) registry.toml, upsert the entry, and write back.
-    let registry_path = base_dir.join("registry.toml");
+    let registry_path = registry_path(base_dir);
     let mut registry_file: RegistryFile = if registry_path.exists() {
         let toml_str = tokio::fs::read_to_string(&registry_path)
             .await
@@ -210,11 +279,7 @@ pub async fn install_feed(base_dir: &Path, content: &str) -> Result<RegistryEntr
     };
 
     // Upsert: replace existing entry with same id, or append.
-    match registry_file
-        .feeds
-        .iter_mut()
-        .find(|e| e.id == *feed_id)
-    {
+    match registry_file.feeds.iter_mut().find(|e| e.id == *feed_id) {
         Some(existing) => *existing = new_entry.clone(),
         None => registry_file.feeds.push(new_entry.clone()),
     }

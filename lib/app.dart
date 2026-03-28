@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'l10n/app_localizations.dart';
 import 'router/app_router.dart';
 
+final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
 class LanghuanApp extends ConsumerWidget {
   const LanghuanApp({super.key});
 
@@ -14,6 +16,7 @@ class LanghuanApp extends ConsumerWidget {
 
     return MaterialApp.router(
       title: 'Langhuan',
+      scaffoldMessengerKey: scaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
       // i18n
       localizationsDelegates: const [

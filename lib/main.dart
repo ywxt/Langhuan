@@ -33,7 +33,23 @@ Future<void> main() async {
   final docsDir = await getApplicationDocumentsDirectory();
   final scriptsDir = Directory('${docsDir.path}/scripts');
   await scriptsDir.create(recursive: true);
-  FeedService.instance.setScriptDirectory(scriptsDir.path).ignore();
 
   runApp(const ProviderScope(child: LanghuanApp()));
+
+  // Load feeds async after the UI is up so the app doesn't block on startup.
+  // On any compile error, surface it as a SnackBar.
+  () async {
+    final result = await FeedService.instance.setScriptDirectory(
+      scriptsDir.path,
+    );
+    if (!result.success) {
+      debugPrint('Feed load error: ${result.error}');
+      scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text(result.error ?? 'Feed load error'),
+          duration: const Duration(seconds: 8),
+        ),
+      );
+    }
+  }();
 }

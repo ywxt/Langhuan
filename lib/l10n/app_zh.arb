@@ -34,6 +34,8 @@
   "feedDetailAuthor": "作者",
   "feedDetailTooltip": "詳情",
 
+  "feedItemLoadError": "加載失敗",
+
   "feedSelectorNoFeeds": "暫無書源，請先在「書源」頁面添加腳本",
 
   "profileTitle": "我的",

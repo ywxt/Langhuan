@@ -191,14 +191,19 @@ class _FeedTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
+    final hasError = feed.error != null;
 
     return ListTile(
       leading: CircleAvatar(
-        backgroundColor: colorScheme.primaryContainer,
+        backgroundColor: hasError
+            ? colorScheme.errorContainer
+            : colorScheme.primaryContainer,
         child: Text(
           feed.name.isNotEmpty ? feed.name[0].toUpperCase() : '?',
           style: TextStyle(
-            color: colorScheme.onPrimaryContainer,
+            color: hasError
+                ? colorScheme.onErrorContainer
+                : colorScheme.onPrimaryContainer,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -212,7 +217,10 @@ class _FeedTile extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
       trailing: IconButton(
-        icon: const Icon(Icons.info_outline),
+        icon: Icon(
+          hasError ? Icons.error_outline : Icons.info_outline,
+          color: hasError ? colorScheme.error : null,
+        ),
         tooltip: l10n.feedDetailTooltip,
         onPressed: () => _showFeedDetailSheet(context, feed),
       ),
@@ -257,6 +265,49 @@ class _FeedDetailSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
+            if (feed.error != null) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      size: 18,
+                      color: colorScheme.onErrorContainer,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            l10n.feedItemLoadError,
+                            style: textTheme.labelSmall?.copyWith(
+                              color: colorScheme.onErrorContainer,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            feed.error!,
+                            style: textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onErrorContainer,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             _MetaRow(
               icon: Icons.label_outline,
               label: l10n.feedDetailId,

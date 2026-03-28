@@ -97,6 +97,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get feedDetailTooltip => 'Details';
 
   @override
+  String get feedItemLoadError => 'Load error';
+
+  @override
   String get feedSelectorNoFeeds =>
       'No feeds available. Add scripts in the Feeds tab first.';
 

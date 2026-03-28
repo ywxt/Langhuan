@@ -260,6 +260,12 @@ abstract class AppLocalizations {
   /// **'Details'**
   String get feedDetailTooltip;
 
+  /// Label for per-feed compile error in detail sheet
+  ///
+  /// In en, this message translates to:
+  /// **'Load error'**
+  String get feedItemLoadError;
+
   /// Search page: no feeds available message
   ///
   /// In en, this message translates to:

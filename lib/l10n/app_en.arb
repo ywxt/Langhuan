@@ -97,6 +97,9 @@
   "feedDetailTooltip": "Details",
   "@feedDetailTooltip": { "description": "Feed list tile trailing icon tooltip" },
 
+  "feedItemLoadError": "Load error",
+  "@feedItemLoadError": { "description": "Label for per-feed compile error in detail sheet" },
+
   "feedSelectorNoFeeds": "No feeds available. Add scripts in the Feeds tab first.",
   "@feedSelectorNoFeeds": { "description": "Search page: no feeds available message" },
 

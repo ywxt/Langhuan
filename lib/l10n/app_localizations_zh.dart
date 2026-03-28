@@ -96,6 +96,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get feedDetailTooltip => '詳情';
 
   @override
+  String get feedItemLoadError => '加載失敗';
+
+  @override
   String get feedSelectorNoFeeds => '暫無書源，請先在「書源」頁面添加腳本';
 
   @override

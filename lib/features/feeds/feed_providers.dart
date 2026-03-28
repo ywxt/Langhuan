@@ -322,8 +322,17 @@ class FeedListState {
 }
 
 class FeedListNotifier extends Notifier<FeedListState> {
+  StreamSubscription<dynamic>? _dirSub;
+
   @override
-  FeedListState build() => const FeedListState();
+  FeedListState build() {
+    _dirSub?.cancel();
+    // Re-load the list every time Rust finishes (re-)loading the registry.
+    // This handles both the async startup race and post-install refreshes.
+    _dirSub = ScriptDirectorySet.rustSignalStream.listen((_) => load());
+    ref.onDispose(() => _dirSub?.cancel());
+    return const FeedListState();
+  }
 
   Future<void> load() async {
     state = const FeedListState(isLoading: true);

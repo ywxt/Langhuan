@@ -54,6 +54,9 @@ pub struct FeedActor {
     /// Pre-compiled feeds keyed by `feed_id`.
     /// Populated (and replaced) each time [`handle_set_directory`] succeeds.
     feeds: HashMap<String, Arc<LuaFeed>>,
+    /// Per-feed compile errors keyed by `feed_id`.
+    /// Populated alongside `feeds`; cleared and rebuilt on every reload.
+    load_errors: HashMap<String, String>,
     /// Live tasks keyed by `request_id`.  Each entry holds a cancellation
     /// token (to request cooperative shutdown) and a join handle (for cleanup).
     tasks: HashMap<String, (CancellationToken, JoinHandle<()>)>,
@@ -71,6 +74,7 @@ impl FeedActor {
             engine: Arc::new(engine),
             registry: None,
             feeds: HashMap::new(),
+            load_errors: HashMap::new(),
             tasks: HashMap::new(),
             scripts_dir: None,
             pending_installs: HashMap::new(),
@@ -94,6 +98,28 @@ impl FeedActor {
         // registry.toml does not exist yet (first-run / empty directory).
         self.scripts_dir = Some(PathBuf::from(&req.path));
 
+        // Create the directory (and any parents) if it does not exist yet.
+        if let Err(e) = tokio::fs::create_dir_all(&req.path).await {
+            ScriptDirectorySet {
+                success: false,
+                feed_count: 0,
+                error: Some(e.to_string()),
+            }
+            .send_signal_to_dart();
+            return;
+        }
+
+        // Ensure registry.toml exists (creates an empty one on first run).
+        if let Err(e) = langhuan::script::registry::ensure_registry(Path::new(&req.path)).await {
+            ScriptDirectorySet {
+                success: false,
+                feed_count: 0,
+                error: Some(localize_error(&e)),
+            }
+            .send_signal_to_dart();
+            return;
+        }
+
         let registry = match ScriptRegistry::load(Path::new(&req.path)).await {
             Ok(r) => r,
             Err(e) => {
@@ -109,32 +135,44 @@ impl FeedActor {
 
         // Eagerly compile every feed listed in the registry.
         let mut feeds = HashMap::new();
-        let mut load_errors: Vec<String> = Vec::new();
+        let mut load_errors: HashMap<String, String> = HashMap::new();
 
         for entry in registry.list_entries() {
             match registry.get_script(&entry.id).await {
-                Err(e) => load_errors.push(format!("{}: {}", entry.id, e)),
+                Err(e) => {
+                    load_errors.insert(entry.id.clone(), e.to_string());
+                }
                 Ok(script) => match self.engine.load_feed(&script).await {
                     Ok(feed) => {
                         feeds.insert(entry.id.clone(), Arc::new(feed));
                     }
-                    Err(e) => load_errors.push(format!("{}: {}", entry.id, e)),
+                    Err(e) => {
+                        load_errors.insert(entry.id.clone(), e.to_string());
+                    }
                 },
             }
         }
 
         let feed_count = feeds.len() as u32;
+        let error_summary = if load_errors.is_empty() {
+            None
+        } else {
+            Some(
+                load_errors
+                    .iter()
+                    .map(|(id, e)| format!("{id}: {e}"))
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            )
+        };
         self.registry = Some(Arc::new(registry));
         self.feeds = feeds;
+        self.load_errors = load_errors;
 
         ScriptDirectorySet {
-            success: true,
+            success: error_summary.is_none(),
             feed_count,
-            error: if load_errors.is_empty() {
-                None
-            } else {
-                Some(load_errors.join("; "))
-            },
+            error: error_summary,
         }
         .send_signal_to_dart();
     }
@@ -150,6 +188,7 @@ impl FeedActor {
                     name: e.name.clone(),
                     version: e.version.clone(),
                     author: e.author.clone(),
+                    error: self.load_errors.get(&e.id).cloned(),
                 })
                 .collect(),
         };
@@ -346,35 +385,43 @@ impl FeedActor {
             }
         };
 
-        if let Err(e) = langhuan::script::registry::install_feed(&scripts_dir, &content).await {
-            FeedInstallResult {
-                request_id: req.request_id,
-                success: false,
-                error: Some(localize_error(&e)),
-            }
-            .send_signal_to_dart();
-            return;
-        }
-
-        // Reload the registry so the new feed is immediately available.
-        match ScriptRegistry::load(&scripts_dir).await {
-            Ok(registry) => {
-                let mut feeds = HashMap::new();
-                for entry in registry.list_entries() {
-                    if let Ok(script) = registry.get_script(&entry.id).await
-                        && let Ok(feed) = self.engine.load_feed(&script).await
-                    {
-                        feeds.insert(entry.id.clone(), Arc::new(feed));
-                    }
+        // 1. Write to disk.
+        let entry = match langhuan::script::registry::install_feed(&scripts_dir, &content).await {
+            Ok(e) => e,
+            Err(e) => {
+                FeedInstallResult {
+                    request_id: req.request_id,
+                    success: false,
+                    error: Some(localize_error(&e)),
                 }
-                self.registry = Some(Arc::new(registry));
-                self.feeds = feeds;
+                .send_signal_to_dart();
+                return;
             }
-            Err(_) => {
-                // Install succeeded; registry reload failure is non-fatal —
-                // user can call SetScriptDirectory again to force a reload.
+        };
+
+        // 2. Compile/validate the script.  On failure, roll back the disk
+        //    write so the broken feed is not left in the registry.
+        let compiled_feed = match self.engine.load_feed(&content).await {
+            Ok(f) => f,
+            Err(e) => {
+                // Best-effort rollback — ignore secondary errors.
+                let _ = langhuan::script::registry::remove_feed(&scripts_dir, &entry.id).await;
+                FeedInstallResult {
+                    request_id: req.request_id,
+                    success: false,
+                    error: Some(e.to_string()),
+                }
+                .send_signal_to_dart();
+                return;
             }
+        };
+
+        // 3. Incremental in-memory update: only touch the newly installed feed.
+        if let Ok(registry) = ScriptRegistry::load(&scripts_dir).await {
+            self.registry = Some(Arc::new(registry));
         }
+        self.load_errors.remove(&entry.id);
+        self.feeds.insert(entry.id.clone(), Arc::new(compiled_feed));
 
         FeedInstallResult {
             request_id: req.request_id,
