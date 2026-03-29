@@ -24,18 +24,18 @@ class MainScaffold extends StatelessWidget {
         },
         destinations: [
           NavigationDestination(
-            icon: const Icon(Icons.book_outlined),
-            selectedIcon: const Icon(Icons.book),
+            icon: const Icon(Icons.auto_stories_outlined),
+            selectedIcon: const Icon(Icons.auto_stories),
             label: l10n.navBookshelf,
           ),
           NavigationDestination(
-            icon: const Icon(Icons.rss_feed_outlined),
-            selectedIcon: const Icon(Icons.rss_feed),
+            icon: const Icon(Icons.extension_outlined),
+            selectedIcon: const Icon(Icons.extension),
             label: l10n.navFeeds,
           ),
           NavigationDestination(
-            icon: const Icon(Icons.person_outline),
-            selectedIcon: const Icon(Icons.person),
+            icon: const Icon(Icons.settings_outlined),
+            selectedIcon: const Icon(Icons.settings),
             label: l10n.navProfile,
           ),
         ],

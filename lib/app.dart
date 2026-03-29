@@ -6,6 +6,7 @@ import 'package:langhuan/rust_init.dart';
 
 import 'l10n/app_localizations.dart';
 import 'router/app_router.dart';
+import 'shared/theme/app_theme.dart';
 
 final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
@@ -85,20 +86,8 @@ class _LanghuanAppState extends ConsumerState<LanghuanApp> {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: AppLocalizations.supportedLocales,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6750A4),
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6750A4),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
+      theme: LanghuanTheme.light(),
+      darkTheme: LanghuanTheme.dark(),
       themeMode: ThemeMode.system,
       routerConfig: router,
     );

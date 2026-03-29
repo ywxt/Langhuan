@@ -5,10 +5,11 @@
 
   "navBookshelf": "書架",
   "navFeeds": "書源",
-  "navProfile": "我的",
+  "navProfile": "設置",
 
   "bookshelfTitle": "書架",
-  "bookshelfEmpty": "你的書籍將顯示在這裡",
+  "bookshelfEmpty": "書架是空的",
+  "bookshelfEmptyHint": "搜索並收藏書籍後會顯示在這裡",
   "bookshelfSearchHint": "搜索書籍…",
 
   "searchTitle": "搜索",
@@ -48,14 +49,22 @@
 
   "feedSelectorNoFeeds": "暫無書源，請先在「書源」頁面添加腳本",
 
-  "profileTitle": "我的",
-  "profileSubtitle": "管理你的帳號設置",
+  "profileTitle": "設置",
+  "profileSubtitle": "管理你的偏好設置",
+
+  "navSettings": "設置",
+  "settingsTitle": "設置",
+  "settingsAbout": "關於",
+  "settingsVersion": "版本",
+  "settingsLicenses": "開源許可",
 
   "errorSomethingWrong": "出現錯誤",
 
   "addFeedTitle": "添加書源",
   "addFeedTabUrl": "從網絡",
+  "addFeedTabUrlDesc": "從網絡地址導入書源腳本",
   "addFeedTabFile": "從本地",
+  "addFeedTabFileDesc": "從本地存儲導入書源腳本",
   "addFeedUrlHint": "輸入腳本地址…",
   "addFeedUrlPreview": "預覽",
   "addFeedPickFile": "選擇腳本文件",

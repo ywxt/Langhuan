@@ -18,13 +18,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navFeeds => 'Feeds';
 
   @override
-  String get navProfile => 'Profile';
+  String get navProfile => 'Settings';
 
   @override
   String get bookshelfTitle => 'Bookshelf';
 
   @override
-  String get bookshelfEmpty => 'Your books will appear here';
+  String get bookshelfEmpty => 'Your bookshelf is empty';
+
+  @override
+  String get bookshelfEmptyHint => 'Search and save books to see them here';
 
   @override
   String get bookshelfSearchHint => 'Search books…';
@@ -137,10 +140,25 @@ class AppLocalizationsEn extends AppLocalizations {
       'No feeds available. Add scripts in the Feeds tab first.';
 
   @override
-  String get profileTitle => 'Profile';
+  String get profileTitle => 'Settings';
 
   @override
-  String get profileSubtitle => 'Manage your account settings';
+  String get profileSubtitle => 'Manage your preferences';
+
+  @override
+  String get navSettings => 'Settings';
+
+  @override
+  String get settingsTitle => 'Settings';
+
+  @override
+  String get settingsAbout => 'About';
+
+  @override
+  String get settingsVersion => 'Version';
+
+  @override
+  String get settingsLicenses => 'Licenses';
 
   @override
   String get errorSomethingWrong => 'Something went wrong';
@@ -152,7 +170,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get addFeedTabUrl => 'From URL';
 
   @override
+  String get addFeedTabUrlDesc =>
+      'Import a feed source script from a web address';
+
+  @override
   String get addFeedTabFile => 'From File';
+
+  @override
+  String get addFeedTabFileDesc =>
+      'Import a feed source script from local storage';
 
   @override
   String get addFeedUrlHint => 'Enter script URL…';

@@ -4,13 +4,13 @@
 
 ## 1. Design Principles
 
-| Principle | Description |
-|-----------|-------------|
-| **Clean** | Generous white space, minimal visual noise. White is the dominant colour. |
-| **Flat** | No drop shadows on cards. Differentiate with subtle background tints. |
-| **Borderless** | Avoid visible borders. Use background colour contrast to separate areas. |
-| **Rounded** | Large corner radii (10–32px mobile) for a bold, friendly feel. |
-| **Readable** | Optimised for long-form reading — clear typography hierarchy, comfortable line heights. |
+| Principle      | Description                                                                             |
+| -------------- | --------------------------------------------------------------------------------------- |
+| **Clean**      | Generous white space, minimal visual noise. White is the dominant colour.               |
+| **Flat**       | No drop shadows on cards. Differentiate with subtle background tints.                   |
+| **Borderless** | Avoid visible borders. Use background colour contrast to separate areas.                |
+| **Rounded**    | Large corner radii (10–32px mobile) for a bold, friendly feel.                          |
+| **Readable**   | Optimised for long-form reading — clear typography hierarchy, comfortable line heights. |
 
 ---
 
@@ -22,86 +22,88 @@ Adapted from Wise's green-centric palette, tuned for a book-reading context.
 
 #### Core Colours
 
-| Token | Light | Dark | Usage |
-|-------|-------|------|-------|
-| `primary` | Forest Green `#163300` | Bright Green `#9FE870` | Interactive elements, active states |
-| `accent` | Bright Green `#9FE870` | Forest Green `#163300` | Primary buttons, FAB, highlights |
-| `background.screen` | `#FFFFFF` | `#121511` | Base screen background |
-| `background.elevated` | `#FFFFFF` | `#1E2118` | Bottom sheets, dialogs |
-| `background.neutral` | `#F2F4EF` (8% Forest Green tint) | `#1E211B` | Cards, chips, search bars |
-| `background.overlay` | `#16330014` (8% opacity) | `#9FE87014` | Shimmers, loading overlays |
+| Token                 | Light                            | Dark                   | Usage                               |
+| --------------------- | -------------------------------- | ---------------------- | ----------------------------------- |
+| `primary`             | Forest Green `#163300`           | Bright Green `#9FE870` | Interactive elements, active states |
+| `accent`              | Bright Green `#9FE870`           | Forest Green `#163300` | Primary buttons, FAB, highlights    |
+| `background.screen`   | `#FFFFFF`                        | `#121511`              | Base screen background              |
+| `background.elevated` | `#FFFFFF`                        | `#1E2118`              | Bottom sheets, dialogs              |
+| `background.neutral`  | `#F2F4EF` (8% Forest Green tint) | `#1E211B`              | Cards, chips, search bars           |
+| `background.overlay`  | `#16330014` (8% opacity)         | `#9FE87014`            | Shimmers, loading overlays          |
 
 #### Content Colours
 
-| Token | Light | Dark | Usage |
-|-------|-------|------|-------|
-| `content.primary` | `#0E0F0C` | `#E8EAE5` | Headlines, primary text |
-| `content.secondary` | `#454745` | `#B0B2AD` | Body text, subtitles |
-| `content.tertiary` | `#6A6C6A` | `#7D7F7C` | Placeholders, hints |
-| `content.link` | `#163300` | `#9FE870` | Links, tappable text |
+| Token               | Light     | Dark      | Usage                   |
+| ------------------- | --------- | --------- | ----------------------- |
+| `content.primary`   | `#0E0F0C` | `#E8EAE5` | Headlines, primary text |
+| `content.secondary` | `#454745` | `#B0B2AD` | Body text, subtitles    |
+| `content.tertiary`  | `#6A6C6A` | `#7D7F7C` | Placeholders, hints     |
+| `content.link`      | `#163300` | `#9FE870` | Links, tappable text    |
 
 #### Interactive Colours
 
-| Token | Light | Dark | Usage |
-|-------|-------|------|-------|
-| `interactive.primary` | `#163300` | `#9FE870` | Active nav items, selected chips |
-| `interactive.accent` | `#9FE870` | `#163300` | Primary button background |
-| `interactive.secondary` | `#868685` | `#6A6C6A` | Input borders, secondary icons |
-| `interactive.control` | `#163300` | `#E8EAE5` | Text/icons on accent surfaces |
+| Token                   | Light     | Dark      | Usage                            |
+| ----------------------- | --------- | --------- | -------------------------------- |
+| `interactive.primary`   | `#163300` | `#9FE870` | Active nav items, selected chips |
+| `interactive.accent`    | `#9FE870` | `#163300` | Primary button background        |
+| `interactive.secondary` | `#868685` | `#6A6C6A` | Input borders, secondary icons   |
+| `interactive.control`   | `#163300` | `#E8EAE5` | Text/icons on accent surfaces    |
 
 #### Sentiment Colours
 
-| Token | Light | Dark | Usage |
-|-------|-------|------|-------|
+| Token                | Light     | Dark      | Usage                       |
+| -------------------- | --------- | --------- | --------------------------- |
 | `sentiment.negative` | `#A8200D` | `#FF6B5A` | Errors, destructive actions |
-| `sentiment.positive` | `#2F5711` | `#9FE870` | Success states |
-| `sentiment.warning` | `#EDC843` | `#EDC843` | Warning backgrounds only |
+| `sentiment.positive` | `#2F5711` | `#9FE870` | Success states              |
+| `sentiment.warning`  | `#EDC843` | `#EDC843` | Warning backgrounds only    |
 
 ### 2.2 Typography
 
 Font: **System default** (San Francisco on iOS, Roboto on Android — matches Inter's clean style).
 
-| Style | Size | Weight | Line Height | Letter Spacing | Usage |
-|-------|------|--------|-------------|----------------|-------|
-| Title Screen | 30sp | SemiBold (w600) | 34px | -2.5% | Main screen titles |
-| Title Section | 22sp | SemiBold (w600) | 28px | -1.5% | Section headings |
-| Title Body | 18sp | SemiBold (w600) | 24px | -1% | Card titles, list item titles |
-| Body Large | 16sp | Regular (w400) | 24px | -0.5% | Paragraphs, descriptions |
-| Body Default | 14sp | Regular (w400) | 22px | 0% | Secondary text, metadata |
-| Body Bold | 14sp | SemiBold (w600) | 22px | 0% | Buttons, links, emphasis |
-| Label | 12sp | Medium (w500) | 16px | 0.5% | Chips, badges, captions |
+| Style              | Size | Weight          | Line Height | Letter Spacing | Usage                         |
+| ------------------ | ---- | --------------- | ----------- | -------------- | ----------------------------- |
+| Title Screen       | 30sp | SemiBold (w600) | 34px        | -2.5%          | Main screen titles            |
+| Title Section      | 26sp | SemiBold (w600) | 32px        | -1.5%          | Section headings              |
+| Title Subsection   | 22sp | SemiBold (w600) | 28px        | -1.5%          | Sub-section headings          |
+| Title Body         | 18sp | SemiBold (w600) | 24px        | -1%            | Card titles, list item titles |
+| Body Large         | 16sp | Regular (w400)  | 24px        | -0.5%          | Paragraphs, descriptions      |
+| Body Default       | 14sp | Regular (w400)  | 22px        | +1%            | Secondary text, metadata      |
+| Body Bold          | 14sp | SemiBold (w600) | 22px        | +1.25%         | Buttons, links, emphasis      |
+| Label              | 12sp | Medium (w500)   | 16px        | 0.5%           | Chips, badges, captions       |
 
 #### Reader Typography (separate context)
 
-| Style | Size | Weight | Line Height | Usage |
-|-------|------|--------|-------------|-------|
-| Chapter Title | 24sp | SemiBold | 32px | Chapter heading |
-| Reading Body | 18sp | Regular | 32px (1.78×) | Main reading content |
-| Reading Image Caption | 14sp | Regular | 20px | Image alt text |
+| Style                 | Size | Weight   | Line Height  | Usage                |
+| --------------------- | ---- | -------- | ------------ | -------------------- |
+| Chapter Title         | 24sp | SemiBold | 32px         | Chapter heading      |
+| Reading Body          | 18sp | Regular  | 32px (1.78×) | Main reading content |
+| Reading Image Caption | 14sp | Regular  | 20px         | Image alt text       |
 
 ### 2.3 Spacing Scale
 
 Based on 8px grid (Wise uses 8/16/24/32).
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `space.xs` | 4px | Tight gaps (icon-to-text in chips) |
-| `space.sm` | 8px | Compact spacing (between chips) |
-| `space.md` | 16px | Standard padding (screen edges, between sections) |
-| `space.lg` | 24px | Section gaps, bottom sheet padding |
-| `space.xl` | 32px | Large section separators |
-| `space.2xl` | 48px | Empty state vertical spacing |
+| Token          | Value | Usage                                             |
+| -------------- | ----- | ------------------------------------------------- |
+| `space.xs`     | 4px   | Tight gaps (icon-to-text in chips)                |
+| `space.sm`     | 8px   | Compact spacing (between chips)                   |
+| `space.md-sm`  | 12px  | Between cards (Wise `between-cards`)              |
+| `space.md`     | 16px  | Standard padding (between sections, components)   |
+| `space.lg`     | 24px  | Screen-edge padding, section gaps, sheet padding  |
+| `space.xl`     | 32px  | Large section separators                          |
+| `space.2xl`    | 48px  | Empty state vertical spacing                      |
 
 ### 2.4 Radius Scale
 
 Wise mobile scale adapted:
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `radius.sm` | 10px | Small chips, badges |
-| `radius.md` | 16px | Cards, search bars, buttons |
-| `radius.lg` | 24px | Bottom sheets, dialogs |
-| `radius.xl` | 32px | Large cards, image containers |
+| Token       | Value | Usage                         |
+| ----------- | ----- | ----------------------------- |
+| `radius.sm` | 10px  | Small chips, badges           |
+| `radius.md` | 16px  | Cards, search bars, buttons   |
+| `radius.lg` | 24px  | Bottom sheets, dialogs        |
+| `radius.xl` | 32px  | Large cards, image containers |
 
 ---
 
@@ -134,18 +136,19 @@ Wise mobile scale adapted:
 #### Primary Button
 - **Background**: `interactive.accent` (Bright Green)
 - **Text**: `interactive.control` (Forest Green), SemiBold
-- **Radius**: `radius.md` (16px)
+- **Shape**: Pill / Stadium (fully rounded ends)
 - **Height**: 48px (large), 40px (medium), 32px (small)
 - **Full width** on mobile for primary actions
 
 #### Secondary Button
 - **Background**: `background.neutral`
 - **Text**: `content.primary`, SemiBold
-- **Radius**: `radius.md` (16px)
+- **Shape**: Pill / Stadium (fully rounded ends)
 
 #### Tertiary / Text Button
 - **Background**: transparent
-- **Text**: `content.link`, SemiBold, underlined
+- **Text**: `content.link`, SemiBold
+- **Shape**: Pill / Stadium (fully rounded ends)
 
 ### 3.4 Cards
 
@@ -309,15 +312,17 @@ Wise mobile scale adapted:
 - Avatar: 40px circle, `interactive.accent` bg with initial letter
 - Error feeds: Avatar uses `sentiment.negative` bg
 - Swipe to delete: Red background slides in from right
-- FAB: `interactive.accent` bg, `interactive.control` icon, 16px radius
+- FAB: `interactive.accent` bg, `interactive.control` icon, **circular** shape
 
 ### 4.4 Add Feed Flow
 
 **Layer 1 — Source Picker (Bottom Sheet)**:
-- Two large tappable option cards:
-  - "From URL" with link icon
-  - "From File" with folder icon
-- Cards: `background.neutral`, 16px radius, 64px height
+- Borderless list of tappable options (no card background):
+  - "From URL" with link icon + description subtitle
+  - "From File" with folder icon + description subtitle
+- Each option: icon + title (Body Bold) + subtitle (Body Default, `content.secondary`)
+- No background fill, no border — separated by vertical spacing
+- Chevron trailing icon
 
 **Layer 2 — URL Input / Preview (Dialog)**:
 - Clean dialog with 24px radius
@@ -409,12 +414,12 @@ Wise mobile scale adapted:
 
 ### 5.1 Transitions
 
-| Transition | Duration | Curve | Usage |
-|-----------|----------|-------|-------|
-| Page push | 300ms | `easeInOutCubic` | Screen navigation |
-| Bottom sheet | 250ms | `easeOutCubic` | Sheet open/close |
-| Fade switch | 200ms | `easeInOut` | Content state changes |
-| Chip select | 150ms | `easeOut` | Chip colour change |
+| Transition   | Duration | Curve            | Usage                 |
+| ------------ | -------- | ---------------- | --------------------- |
+| Page push    | 300ms    | `easeInOutCubic` | Screen navigation     |
+| Bottom sheet | 250ms    | `easeOutCubic`   | Sheet open/close      |
+| Fade switch  | 200ms    | `easeInOut`      | Content state changes |
+| Chip select  | 150ms    | `easeOut`        | Chip colour change    |
 
 ### 5.2 Loading States
 
@@ -424,14 +429,14 @@ Wise mobile scale adapted:
 
 ### 5.3 Empty States
 
-- Icon: 64–80px, `content.tertiary` at 40% opacity
+- Icon: 48–56px, `content.tertiary` at 40% opacity, **no background container** (bare icon)
 - Title: Title Body style
 - Subtitle: Body Large, `content.secondary`
 - Optional action button below
 
 ### 5.4 Error States
 
-- Icon: `sentiment.negative`, 48px
+- Icon: 48px, `sentiment.negative` at 60% opacity, **no background container** (bare icon)
 - Title: Body Bold, `sentiment.negative`
 - Message: Body Default, `content.secondary`
 - Retry button: Secondary style
@@ -495,15 +500,15 @@ FilledButtonThemeData(
 
 ### 6.3 Key Widgets
 
-| Component | Flutter Widget |
-|-----------|---------------|
-| Bottom Nav | `NavigationBar` with custom theme |
-| Search Bar | `SearchBar` with filled theme |
-| Book Grid | `SliverGrid` with `SliverGridDelegateWithFixedCrossAxisCount(3)` |
-| Feed List | `ListView` with card-wrapped items |
-| Chips | `ChoiceChip` with custom theme |
-| Bottom Sheet | `showModalBottomSheet` with custom shape |
-| Settings | `ListView` with grouped `Card` sections |
+| Component    | Flutter Widget                                                   |
+| ------------ | ---------------------------------------------------------------- |
+| Bottom Nav   | `NavigationBar` with custom theme                                |
+| Search Bar   | `SearchBar` with filled theme                                    |
+| Book Grid    | `SliverGrid` with `SliverGridDelegateWithFixedCrossAxisCount(3)` |
+| Feed List    | `ListView` with card-wrapped items                               |
+| Chips        | `ChoiceChip` with custom theme                                   |
+| Bottom Sheet | `showModalBottomSheet` with custom shape                         |
+| Settings     | `ListView` with grouped `Card` sections                          |
 
 ---
 

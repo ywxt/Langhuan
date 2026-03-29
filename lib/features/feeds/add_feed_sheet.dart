@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/theme/app_theme.dart';
 import 'add_feed_provider.dart';
 import 'feed_service.dart';
 
@@ -65,34 +66,33 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+      padding: const EdgeInsets.fromLTRB(
+        LanghuanTheme.spaceLg,
+        0,
+        LanghuanTheme.spaceLg,
+        LanghuanTheme.spaceXl,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Text(
-              l10n.addFeedTitle,
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
+            padding: const EdgeInsets.only(bottom: LanghuanTheme.spaceMd),
+            child: Text(l10n.addFeedTitle, style: theme.textTheme.titleLarge),
           ),
           _SourceOption(
             icon: Icons.link_rounded,
             label: l10n.addFeedTabUrl,
-            colorScheme: colorScheme,
+            subtitle: l10n.addFeedTabUrlDesc,
             onTap: _openUrlDialog,
           ),
-          const SizedBox(height: 12),
           _SourceOption(
             icon: Icons.folder_open_rounded,
             label: l10n.addFeedTabFile,
-            colorScheme: colorScheme,
+            subtitle: l10n.addFeedTabFileDesc,
             onTap: _pickingFile ? null : _pickFile,
             trailing: _pickingFile
                 ? const SizedBox(
@@ -283,45 +283,61 @@ class _SourceOption extends StatelessWidget {
   const _SourceOption({
     required this.icon,
     required this.label,
-    required this.colorScheme,
     required this.onTap,
+    this.subtitle,
     this.trailing,
   });
 
   final IconData icon;
   final String label;
-  final ColorScheme colorScheme;
+  final String? subtitle;
   final VoidCallback? onTap;
   final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
-          child: Row(
-            children: [
-              Icon(icon, size: 28, color: colorScheme.primary),
-              const SizedBox(width: 16),
-              Text(
-                label,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(color: colorScheme.onSurface),
-              ),
-              const Spacer(),
-              trailing ??
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: colorScheme.onSurfaceVariant,
+    final theme = Theme.of(context);
+
+    return InkWell(
+      borderRadius: LanghuanTheme.borderRadiusMd,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          vertical: LanghuanTheme.spaceMd,
+          horizontal: LanghuanTheme.spaceSm,
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 24, color: theme.colorScheme.primary),
+            const SizedBox(width: LanghuanTheme.spaceMd),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: theme.colorScheme.onSurface,
+                    ),
                   ),
-            ],
-          ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: LanghuanTheme.spaceXs),
+                    Text(
+                      subtitle!,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            trailing ??
+                Icon(
+                  Icons.chevron_right,
+                  color: theme.colorScheme.onSurfaceVariant.withAlpha(120),
+                ),
+          ],
         ),
       ),
     );
@@ -351,7 +367,6 @@ class _UrlInputContent extends StatelessWidget {
         controller: controller,
         decoration: InputDecoration(
           hintText: l10n.addFeedUrlHint,
-          border: const OutlineInputBorder(),
           prefixIcon: const Icon(Icons.link_rounded),
         ),
         keyboardType: TextInputType.url,
@@ -397,7 +412,7 @@ class _PreviewContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
 
     return SizedBox(
       width: 360,
@@ -409,59 +424,66 @@ class _PreviewContent extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  preview.name,
-                  style: textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                child: Text(preview.name, style: theme.textTheme.titleMedium),
               ),
-              const SizedBox(width: 8),
-              Chip(
-                label: Text('v${preview.version}'),
-                padding: EdgeInsets.zero,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              const SizedBox(width: LanghuanTheme.spaceSm),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: LanghuanTheme.spaceSm,
+                  vertical: LanghuanTheme.spaceXs,
+                ),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainer,
+                  borderRadius: LanghuanTheme.borderRadiusSm,
+                ),
+                child: Text(
+                  'v${preview.version}',
+                  style: theme.textTheme.labelMedium,
+                ),
               ),
             ],
           ),
           // ── Upgrade banner ──
           if (preview.isUpgrade && preview.currentVersion != null) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: LanghuanTheme.spaceSm),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(
+                horizontal: LanghuanTheme.spaceSm,
+                vertical: LanghuanTheme.spaceXs,
+              ),
               decoration: BoxDecoration(
                 color: colorScheme.tertiaryContainer,
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: LanghuanTheme.borderRadiusSm,
               ),
               child: Text(
                 l10n.addFeedIsUpgrade(preview.currentVersion!, preview.version),
-                style: textTheme.labelSmall?.copyWith(
+                style: theme.textTheme.labelMedium?.copyWith(
                   color: colorScheme.onTertiaryContainer,
                 ),
               ),
             ),
           ],
           if (preview.author != null) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: LanghuanTheme.spaceXs),
             Text(
               preview.author!,
-              style: textTheme.bodySmall?.copyWith(
+              style: theme.textTheme.bodyMedium?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
           ],
-          const SizedBox(height: 10),
-          const Divider(height: 1),
-          const SizedBox(height: 10),
+          const SizedBox(height: LanghuanTheme.spaceMd),
+          Divider(color: colorScheme.outline),
+          const SizedBox(height: LanghuanTheme.spaceMd),
           // ── Base URL ──
           Row(
             children: [
               Icon(Icons.link, size: 14, color: colorScheme.onSurfaceVariant),
-              const SizedBox(width: 4),
+              const SizedBox(width: LanghuanTheme.spaceXs),
               Expanded(
                 child: Text(
                   preview.baseUrl,
-                  style: textTheme.bodySmall?.copyWith(
+                  style: theme.textTheme.bodyMedium?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -469,44 +491,49 @@ class _PreviewContent extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: LanghuanTheme.spaceMd),
           // ── Domain access ──
           Text(
             l10n.addFeedAllowedDomains,
-            style: textTheme.labelMedium?.copyWith(
+            style: theme.textTheme.labelMedium?.copyWith(
               color: colorScheme.onSurfaceVariant,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: LanghuanTheme.spaceSm),
           if (preview.allowedDomains.isEmpty)
             Text(
               l10n.addFeedNoDomainRestriction,
-              style: textTheme.bodySmall?.copyWith(
+              style: theme.textTheme.bodyMedium?.copyWith(
                 color: colorScheme.onSurfaceVariant,
                 fontStyle: FontStyle.italic,
               ),
             )
           else
             Wrap(
-              spacing: 6,
-              runSpacing: 4,
+              spacing: LanghuanTheme.spaceSm,
+              runSpacing: LanghuanTheme.spaceXs,
               children: preview.allowedDomains
                   .map(
-                    (d) => Chip(
-                      label: Text(d, style: textTheme.labelSmall),
-                      backgroundColor: colorScheme.secondaryContainer,
-                      padding: EdgeInsets.zero,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    (d) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: LanghuanTheme.spaceSm,
+                        vertical: LanghuanTheme.spaceXs,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colorScheme.secondaryContainer,
+                        borderRadius: LanghuanTheme.borderRadiusSm,
+                      ),
+                      child: Text(d, style: theme.textTheme.labelMedium),
                     ),
                   )
                   .toList(),
             ),
           // ── Description ──
           if (preview.description != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: LanghuanTheme.spaceMd),
             Text(
               preview.description!,
-              style: textTheme.bodySmall?.copyWith(
+              style: theme.textTheme.bodyMedium?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
@@ -529,22 +556,26 @@ class _ErrorContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Container(
       width: 300,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(LanghuanTheme.spaceMd),
       decoration: BoxDecoration(
         color: colorScheme.errorContainer,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: LanghuanTheme.borderRadiusMd,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(Icons.error_outline, color: colorScheme.onErrorContainer),
-          const SizedBox(width: 8),
+          const SizedBox(width: LanghuanTheme.spaceSm),
           Expanded(
             child: Text(
               message,
-              style: TextStyle(color: colorScheme.onErrorContainer),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onErrorContainer,
+              ),
             ),
           ),
         ],

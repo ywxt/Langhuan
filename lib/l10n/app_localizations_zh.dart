@@ -18,13 +18,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get navFeeds => '書源';
 
   @override
-  String get navProfile => '我的';
+  String get navProfile => '設置';
 
   @override
   String get bookshelfTitle => '書架';
 
   @override
-  String get bookshelfEmpty => '你的書籍將顯示在這裡';
+  String get bookshelfEmpty => '書架是空的';
+
+  @override
+  String get bookshelfEmptyHint => '搜索並收藏書籍後會顯示在這裡';
 
   @override
   String get bookshelfSearchHint => '搜索書籍…';
@@ -135,10 +138,25 @@ class AppLocalizationsZh extends AppLocalizations {
   String get feedSelectorNoFeeds => '暫無書源，請先在「書源」頁面添加腳本';
 
   @override
-  String get profileTitle => '我的';
+  String get profileTitle => '設置';
 
   @override
-  String get profileSubtitle => '管理你的帳號設置';
+  String get profileSubtitle => '管理你的偏好設置';
+
+  @override
+  String get navSettings => '設置';
+
+  @override
+  String get settingsTitle => '設置';
+
+  @override
+  String get settingsAbout => '關於';
+
+  @override
+  String get settingsVersion => '版本';
+
+  @override
+  String get settingsLicenses => '開源許可';
 
   @override
   String get errorSomethingWrong => '出現錯誤';
@@ -150,7 +168,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get addFeedTabUrl => '從網絡';
 
   @override
+  String get addFeedTabUrlDesc => '從網絡地址導入書源腳本';
+
+  @override
   String get addFeedTabFile => '從本地';
+
+  @override
+  String get addFeedTabFileDesc => '從本地存儲導入書源腳本';
 
   @override
   String get addFeedUrlHint => '輸入腳本地址…';

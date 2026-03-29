@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../features/bookshelf/bookshelf_page.dart';
 import '../features/bookshelf/search_page.dart';
 import '../features/feeds/feeds_page.dart';
-import '../features/profile/profile_page.dart';
+import '../features/settings/settings_page.dart';
 import '../shared/widgets/main_scaffold.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -50,7 +50,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/profile',
                 name: 'profile',
-                builder: (context, state) => const ProfilePage(),
+                builder: (context, state) => const SettingsPage(),
               ),
             ],
           ),

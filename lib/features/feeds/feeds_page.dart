@@ -5,12 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app.dart';
 import '../../l10n/app_localizations.dart';
+import '../../shared/theme/app_theme.dart';
 import '../../src/bindings/signals/signals.dart';
 import 'add_feed_sheet.dart';
 import 'feed_providers.dart';
 
 // ---------------------------------------------------------------------------
-// FeedsPage — feed (book source) list
+// FeedsPage — Wise-inspired feed (book source) management
 // ---------------------------------------------------------------------------
 
 class FeedsPage extends ConsumerStatefulWidget {
@@ -60,40 +61,72 @@ class _FeedsPageState extends ConsumerState<FeedsPage> {
   @override
   Widget build(BuildContext context) {
     final feedState = ref.watch(feedListProvider);
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
 
     final filtered = _filtered(feedState.items);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.feedsTitle),
-        centerTitle: true,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(64),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: SearchBar(
-              controller: _filterController,
-              hintText: l10n.feedsSearchHint,
-              leading: const Icon(Icons.search),
-              trailing: [
-                if (_filterText.isNotEmpty)
-                  IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: _filterController.clear,
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => showAddFeedSheet(context),
         tooltip: l10n.addFeedTitle,
         child: const Icon(Icons.add),
       ),
-      body: _buildBody(context, feedState, filtered, colorScheme, l10n),
+      body: SafeArea(
+        child: CustomScrollView(
+          slivers: [
+            // ── Title ──────────────────────────────────────────────────
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(
+                LanghuanTheme.spaceLg,
+                LanghuanTheme.spaceLg,
+                LanghuanTheme.spaceLg,
+                LanghuanTheme.spaceMd,
+              ),
+              sliver: SliverToBoxAdapter(
+                child: Text(
+                  l10n.feedsTitle,
+                  style: theme.textTheme.headlineLarge,
+                ),
+              ),
+            ),
+
+            // ── Search bar ─────────────────────────────────────────────
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: LanghuanTheme.spaceLg,
+              ),
+              sliver: SliverToBoxAdapter(
+                child: SearchBar(
+                  controller: _filterController,
+                  hintText: l10n.feedsSearchHint,
+                  leading: Icon(
+                    Icons.search,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  trailing: [
+                    if (_filterText.isNotEmpty)
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: _filterController.clear,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SliverToBoxAdapter(
+              child: SizedBox(height: LanghuanTheme.spaceMd),
+            ),
+
+            // ── Content ────────────────────────────────────────────────
+            _buildBody(context, feedState, filtered, theme, l10n),
+
+            // Bottom padding for FAB
+            const SliverToBoxAdapter(child: SizedBox(height: 80)),
+          ],
+        ),
+      ),
     );
   }
 
@@ -101,43 +134,54 @@ class _FeedsPageState extends ConsumerState<FeedsPage> {
     BuildContext context,
     FeedListState feedState,
     List<FeedMetaItem> filtered,
-    ColorScheme colorScheme,
+    ThemeData theme,
     AppLocalizations l10n,
   ) {
     // ── Loading ──────────────────────────────────────────────────────────────
     if (feedState.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(child: CircularProgressIndicator()),
+      );
     }
 
-    // ── Error ────────────────────────────────────────────────────────────────────────
+    // ── Error ────────────────────────────────────────────────────────────────
     if (feedState.hasError) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.error_outline, size: 48, color: colorScheme.error),
-              const SizedBox(height: 16),
-              Text(
-                l10n.feedsLoadError,
-                style: TextStyle(
-                  color: colorScheme.error,
-                  fontWeight: FontWeight.bold,
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(LanghuanTheme.spaceXl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.error_outline,
+                  size: 48,
+                  color: theme.colorScheme.error.withAlpha(160),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                feedState.error.toString(),
-                style: TextStyle(color: colorScheme.onSurfaceVariant),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              FilledButton.tonal(
-                onPressed: () => ref.read(feedListProvider.notifier).load(),
-                child: Text(l10n.feedsRetry),
-              ),
-            ],
+                const SizedBox(height: LanghuanTheme.spaceMd),
+                Text(
+                  l10n.feedsLoadError,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+                const SizedBox(height: LanghuanTheme.spaceSm),
+                Text(
+                  feedState.error.toString(),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: LanghuanTheme.spaceMd),
+                FilledButton.tonal(
+                  onPressed: () => ref.read(feedListProvider.notifier).load(),
+                  child: Text(l10n.feedsRetry),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -145,73 +189,96 @@ class _FeedsPageState extends ConsumerState<FeedsPage> {
 
     // ── Empty state ──────────────────────────────────────────────────────────
     if (!feedState.hasItems) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.rss_feed,
-              size: 64,
-              color: colorScheme.onSurfaceVariant.withAlpha(100),
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(LanghuanTheme.spaceXl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.extension_outlined,
+                  size: 56,
+                  color: theme.colorScheme.onSurfaceVariant.withAlpha(100),
+                ),
+                const SizedBox(height: LanghuanTheme.spaceMd),
+                Text(
+                  l10n.feedsEmpty,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              l10n.feedsEmpty,
-              style: TextStyle(color: colorScheme.onSurfaceVariant),
-              textAlign: TextAlign.center,
-            ),
-          ],
+          ),
         ),
       );
     }
 
     // ── No filter matches ─────────────────────────────────────────────────────
     if (filtered.isEmpty) {
-      return Center(
-        child: Text(
-          l10n.feedsNoMatch(_filterText),
-          style: TextStyle(color: colorScheme.onSurfaceVariant),
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: Text(
+            l10n.feedsNoMatch(_filterText),
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
       );
     }
 
-    // ── Feed list ─────────────────────────────────────────────────────────────
-    return ListView.separated(
-      itemCount: filtered.length,
-      separatorBuilder: (_, _) => const Divider(height: 1, indent: 72),
-      itemBuilder: (context, index) {
-        final feed = filtered[index];
-        final deletingId = feedState.removingFeedId;
-        final isDeleting =
-            deletingId == feed.id || _pendingDeleteIds.contains(feed.id);
-        final isBusy = deletingId != null || _pendingDeleteIds.isNotEmpty;
+    // ── Feed list (card-style items) ──────────────────────────────────────
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: LanghuanTheme.spaceLg),
+      sliver: SliverList.builder(
+        itemCount: filtered.length,
+        itemBuilder: (context, index) {
+          final feed = filtered[index];
+          final deletingId = feedState.removingFeedId;
+          final isDeleting =
+              deletingId == feed.id || _pendingDeleteIds.contains(feed.id);
+          final isBusy = deletingId != null || _pendingDeleteIds.isNotEmpty;
 
-        return Dismissible(
-          key: ValueKey('feed-${feed.id}'),
-          direction: isBusy
-              ? DismissDirection.none
-              : DismissDirection.endToStart,
-          background: Container(
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            color: colorScheme.errorContainer,
-            child: Icon(
-              Icons.delete_outline,
-              color: colorScheme.onErrorContainer,
+          return Padding(
+            padding: const EdgeInsets.only(bottom: LanghuanTheme.spaceSm),
+            child: Dismissible(
+              key: ValueKey('feed-${feed.id}'),
+              direction: isBusy
+                  ? DismissDirection.none
+                  : DismissDirection.endToStart,
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: LanghuanTheme.spaceLg,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.errorContainer,
+                  borderRadius: LanghuanTheme.borderRadiusMd,
+                ),
+                child: Icon(
+                  Icons.delete_outline,
+                  color: theme.colorScheme.onErrorContainer,
+                ),
+              ),
+              confirmDismiss: (_) async {
+                final confirmed =
+                    await _confirmDelete(context, feed, l10n) == true;
+                if (confirmed && context.mounted) {
+                  final messenger = ScaffoldMessenger.of(context);
+                  _handleDeleteWithUndo(feed, l10n, messenger);
+                }
+                return false;
+              },
+              child: _FeedCard(feed: feed, isDeleting: isDeleting),
             ),
-          ),
-          confirmDismiss: (_) async {
-            final confirmed = await _confirmDelete(context, feed, l10n) == true;
-            if (confirmed) {
-              // Capture the local Scaffold's messenger BEFORE any rebuild.
-              final messenger = ScaffoldMessenger.of(context);
-              _handleDeleteWithUndo(feed, l10n, messenger);
-            }
-            return false; // Always reset Dismissible position
-          },
-          child: _FeedTile(feed: feed, isDeleting: isDeleting),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
@@ -226,8 +293,6 @@ class _FeedsPageState extends ConsumerState<FeedsPage> {
       _pendingDeleteIds.add(feed.id);
     });
 
-    // Use a Completer + Timer instead of awaiting SnackBarController.closed,
-    // because MaterialApp rebuilds can orphan the .closed future forever.
     final completer = Completer<bool>();
     _undoCompleter = completer;
 
@@ -245,7 +310,6 @@ class _FeedsPageState extends ConsumerState<FeedsPage> {
       ),
     );
 
-    // Timer fires after 4 seconds — if user hasn't tapped Undo, proceed.
     final timer = Timer(const Duration(seconds: 4), () {
       if (!completer.isCompleted) completer.complete(false);
     });
@@ -257,7 +321,6 @@ class _FeedsPageState extends ConsumerState<FeedsPage> {
     if (!mounted) return;
 
     if (undone) {
-      // User tapped Undo — restore the item in the list.
       setState(() {
         _pendingDeleteIds.remove(feed.id);
       });
@@ -265,7 +328,6 @@ class _FeedsPageState extends ConsumerState<FeedsPage> {
       return;
     }
 
-    // Proceed with actual deletion.
     messenger.clearSnackBars();
     final error = await ref
         .read(feedListProvider.notifier)
@@ -309,8 +371,12 @@ class _FeedsPageState extends ConsumerState<FeedsPage> {
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: Text(l10n.feedDeleteCancel),
           ),
-          FilledButton.tonal(
+          FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(dialogContext).colorScheme.error,
+              foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+            ),
             child: Text(l10n.feedDeleteConfirm),
           ),
         ],
@@ -320,75 +386,115 @@ class _FeedsPageState extends ConsumerState<FeedsPage> {
 }
 
 // ---------------------------------------------------------------------------
-// Feed list tile
+// Feed card — Wise-style borderless card
 // ---------------------------------------------------------------------------
 
-class _FeedTile extends StatelessWidget {
-  const _FeedTile({required this.feed, this.isDeleting = false});
+class _FeedCard extends StatelessWidget {
+  const _FeedCard({required this.feed, this.isDeleting = false});
 
   final FeedMetaItem feed;
   final bool isDeleting;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
     final hasError = feed.error != null;
 
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: hasError
-            ? colorScheme.errorContainer
-            : colorScheme.primaryContainer,
-        child: Text(
-          feed.name.isNotEmpty ? feed.name[0].toUpperCase() : '?',
-          style: TextStyle(
-            color: hasError
-                ? colorScheme.onErrorContainer
-                : colorScheme.onPrimaryContainer,
-            fontWeight: FontWeight.bold,
+    return Material(
+      color: theme.colorScheme.surfaceContainer,
+      borderRadius: LanghuanTheme.borderRadiusMd,
+      child: InkWell(
+        borderRadius: LanghuanTheme.borderRadiusMd,
+        onTap: isDeleting ? null : () => _showFeedDetailSheet(context, feed),
+        child: Padding(
+          padding: const EdgeInsets.all(LanghuanTheme.spaceMd),
+          child: Row(
+            children: [
+              // ── Avatar ─────────────────────────────────────────────
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: hasError
+                      ? theme.colorScheme.errorContainer
+                      : theme.colorScheme.primaryContainer,
+                  borderRadius: LanghuanTheme.borderRadiusSm,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  feed.name.isNotEmpty ? feed.name[0].toUpperCase() : '?',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: hasError
+                        ? theme.colorScheme.onErrorContainer
+                        : theme.colorScheme.onPrimaryContainer,
+                  ),
+                ),
+              ),
+              const SizedBox(width: LanghuanTheme.spaceMd),
+
+              // ── Text ───────────────────────────────────────────────
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      feed.name,
+                      style: theme.textTheme.titleMedium,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      feed.author != null
+                          ? 'v${feed.version} · ${feed.author}'
+                          : 'v${feed.version}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Trailing ───────────────────────────────────────────
+              if (isDeleting)
+                SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: theme.colorScheme.primary,
+                  ),
+                )
+              else if (hasError)
+                Icon(
+                  Icons.error_outline,
+                  size: 20,
+                  color: theme.colorScheme.error,
+                )
+              else
+                Icon(
+                  Icons.chevron_right,
+                  size: 20,
+                  color: theme.colorScheme.onSurfaceVariant.withAlpha(120),
+                ),
+            ],
           ),
         ),
-      ),
-      title: Text(feed.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(
-        feed.author != null
-            ? 'v${feed.version} · ${feed.author}'
-            : 'v${feed.version}',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      trailing: IconButton(
-        icon: isDeleting
-            ? SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: colorScheme.primary,
-                ),
-              )
-            : Icon(
-                hasError ? Icons.error_outline : Icons.info_outline,
-                color: hasError ? colorScheme.error : null,
-              ),
-        tooltip: l10n.feedDetailTooltip,
-        onPressed: isDeleting
-            ? null
-            : () => _showFeedDetailSheet(context, feed),
       ),
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Feed detail bottom sheet
+// Feed detail bottom sheet — Wise-style
 // ---------------------------------------------------------------------------
 
 void _showFeedDetailSheet(BuildContext context, FeedMetaItem feed) {
   showModalBottomSheet<void>(
     context: context,
-    showDragHandle: true,
     builder: (context) => _FeedDetailSheet(feed: feed),
   );
 }
@@ -400,31 +506,31 @@ class _FeedDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
 
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+        padding: const EdgeInsets.fromLTRB(
+          LanghuanTheme.spaceLg,
+          0,
+          LanghuanTheme.spaceLg,
+          LanghuanTheme.spaceXl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              feed.name,
-              style: textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 20),
+            Text(feed.name, style: theme.textTheme.titleLarge),
+            const SizedBox(height: LanghuanTheme.spaceMd),
+
             if (feed.error != null) ...[
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(LanghuanTheme.spaceMd),
                 decoration: BoxDecoration(
-                  color: colorScheme.errorContainer,
-                  borderRadius: BorderRadius.circular(8),
+                  color: theme.colorScheme.errorContainer,
+                  borderRadius: LanghuanTheme.borderRadiusMd,
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -432,25 +538,25 @@ class _FeedDetailSheet extends StatelessWidget {
                     Icon(
                       Icons.error_outline,
                       size: 18,
-                      color: colorScheme.onErrorContainer,
+                      color: theme.colorScheme.onErrorContainer,
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: LanghuanTheme.spaceSm),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             l10n.feedItemLoadError,
-                            style: textTheme.labelSmall?.copyWith(
-                              color: colorScheme.onErrorContainer,
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: theme.colorScheme.onErrorContainer,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             feed.error!,
-                            style: textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onErrorContainer,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onErrorContainer,
                             ),
                           ),
                         ],
@@ -459,31 +565,26 @@ class _FeedDetailSheet extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: LanghuanTheme.spaceMd),
             ],
+
             _MetaRow(
               icon: Icons.label_outline,
               label: l10n.feedDetailId,
               value: feed.id,
-              colorScheme: colorScheme,
-              textTheme: textTheme,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: LanghuanTheme.spaceMd),
             _MetaRow(
               icon: Icons.tag,
               label: l10n.feedDetailVersion,
               value: feed.version,
-              colorScheme: colorScheme,
-              textTheme: textTheme,
             ),
             if (feed.author != null) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: LanghuanTheme.spaceMd),
               _MetaRow(
                 icon: Icons.person_outline,
                 label: l10n.feedDetailAuthor,
                 value: feed.author!,
-                colorScheme: colorScheme,
-                textTheme: textTheme,
               ),
             ],
           ],
@@ -498,34 +599,32 @@ class _MetaRow extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
-    required this.colorScheme,
-    required this.textTheme,
   });
 
   final IconData icon;
   final String label;
   final String value;
-  final ColorScheme colorScheme;
-  final TextTheme textTheme;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 18, color: colorScheme.onSurfaceVariant),
-        const SizedBox(width: 12),
+        Icon(icon, size: 18, color: theme.colorScheme.onSurfaceVariant),
+        const SizedBox(width: LanghuanTheme.spaceSm),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 label,
-                style: textTheme.labelSmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-              Text(value, style: textTheme.bodyMedium),
+              Text(value, style: theme.textTheme.bodyMedium),
             ],
           ),
         ),

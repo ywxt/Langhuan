@@ -10,14 +10,17 @@
   "navFeeds": "Feeds",
   "@navFeeds": { "description": "Bottom nav: feeds tab" },
 
-  "navProfile": "Profile",
-  "@navProfile": { "description": "Bottom nav: profile tab" },
+  "navProfile": "Settings",
+  "@navProfile": { "description": "Bottom nav: settings tab" },
 
   "bookshelfTitle": "Bookshelf",
   "@bookshelfTitle": { "description": "Bookshelf page title" },
 
-  "bookshelfEmpty": "Your books will appear here",
+  "bookshelfEmpty": "Your bookshelf is empty",
   "@bookshelfEmpty": { "description": "Bookshelf empty state message" },
+
+  "bookshelfEmptyHint": "Search and save books to see them here",
+  "@bookshelfEmptyHint": { "description": "Bookshelf empty state secondary message" },
 
   "bookshelfSearchHint": "Search books…",
   "@bookshelfSearchHint": { "description": "Search bar hint on bookshelf page" },
@@ -145,11 +148,26 @@
   "feedSelectorNoFeeds": "No feeds available. Add scripts in the Feeds tab first.",
   "@feedSelectorNoFeeds": { "description": "Search page: no feeds available message" },
 
-  "profileTitle": "Profile",
-  "@profileTitle": { "description": "Profile page title" },
+  "profileTitle": "Settings",
+  "@profileTitle": { "description": "Settings page title" },
 
-  "profileSubtitle": "Manage your account settings",
-  "@profileSubtitle": { "description": "Profile page subtitle" },
+  "profileSubtitle": "Manage your preferences",
+  "@profileSubtitle": { "description": "Settings page subtitle" },
+
+  "navSettings": "Settings",
+  "@navSettings": { "description": "Bottom nav: settings tab" },
+
+  "settingsTitle": "Settings",
+  "@settingsTitle": { "description": "Settings page title" },
+
+  "settingsAbout": "About",
+  "@settingsAbout": { "description": "Settings section: about" },
+
+  "settingsVersion": "Version",
+  "@settingsVersion": { "description": "Settings row: app version" },
+
+  "settingsLicenses": "Licenses",
+  "@settingsLicenses": { "description": "Settings row: open source licenses" },
 
   "errorSomethingWrong": "Something went wrong",
   "@errorSomethingWrong": { "description": "Generic error title" },
@@ -160,8 +178,14 @@
   "addFeedTabUrl": "From URL",
   "@addFeedTabUrl": { "description": "Tab label: add feed from a network URL" },
 
+  "addFeedTabUrlDesc": "Import a feed source script from a web address",
+  "@addFeedTabUrlDesc": { "description": "Description for the URL source option" },
+
   "addFeedTabFile": "From File",
   "@addFeedTabFile": { "description": "Tab label: add feed from a local file" },
+
+  "addFeedTabFileDesc": "Import a feed source script from local storage",
+  "@addFeedTabFileDesc": { "description": "Description for the file source option" },
 
   "addFeedUrlHint": "Enter script URL…",
   "@addFeedUrlHint": { "description": "TextField hint for URL input" },

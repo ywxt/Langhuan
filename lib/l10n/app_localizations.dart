@@ -116,10 +116,10 @@ abstract class AppLocalizations {
   /// **'Feeds'**
   String get navFeeds;
 
-  /// Bottom nav: profile tab
+  /// Bottom nav: settings tab
   ///
   /// In en, this message translates to:
-  /// **'Profile'**
+  /// **'Settings'**
   String get navProfile;
 
   /// Bookshelf page title
@@ -131,8 +131,14 @@ abstract class AppLocalizations {
   /// Bookshelf empty state message
   ///
   /// In en, this message translates to:
-  /// **'Your books will appear here'**
+  /// **'Your bookshelf is empty'**
   String get bookshelfEmpty;
+
+  /// Bookshelf empty state secondary message
+  ///
+  /// In en, this message translates to:
+  /// **'Search and save books to see them here'**
+  String get bookshelfEmptyHint;
 
   /// Search bar hint on bookshelf page
   ///
@@ -326,17 +332,47 @@ abstract class AppLocalizations {
   /// **'No feeds available. Add scripts in the Feeds tab first.'**
   String get feedSelectorNoFeeds;
 
-  /// Profile page title
+  /// Settings page title
   ///
   /// In en, this message translates to:
-  /// **'Profile'**
+  /// **'Settings'**
   String get profileTitle;
 
-  /// Profile page subtitle
+  /// Settings page subtitle
   ///
   /// In en, this message translates to:
-  /// **'Manage your account settings'**
+  /// **'Manage your preferences'**
   String get profileSubtitle;
+
+  /// Bottom nav: settings tab
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get navSettings;
+
+  /// Settings page title
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTitle;
+
+  /// Settings section: about
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get settingsAbout;
+
+  /// Settings row: app version
+  ///
+  /// In en, this message translates to:
+  /// **'Version'**
+  String get settingsVersion;
+
+  /// Settings row: open source licenses
+  ///
+  /// In en, this message translates to:
+  /// **'Licenses'**
+  String get settingsLicenses;
 
   /// Generic error title
   ///
@@ -356,11 +392,23 @@ abstract class AppLocalizations {
   /// **'From URL'**
   String get addFeedTabUrl;
 
+  /// Description for the URL source option
+  ///
+  /// In en, this message translates to:
+  /// **'Import a feed source script from a web address'**
+  String get addFeedTabUrlDesc;
+
   /// Tab label: add feed from a local file
   ///
   /// In en, this message translates to:
   /// **'From File'**
   String get addFeedTabFile;
+
+  /// Description for the file source option
+  ///
+  /// In en, this message translates to:
+  /// **'Import a feed source script from local storage'**
+  String get addFeedTabFileDesc;
 
   /// TextField hint for URL input
   ///
