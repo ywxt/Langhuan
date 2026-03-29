@@ -75,7 +75,7 @@ class _LanghuanAppState extends ConsumerState<LanghuanApp> {
     final router = ref.watch(appRouterProvider);
 
     return MaterialApp.router(
-      title: 'Langhuan',
+      onGenerateTitle: (context) => AppLocalizations.of(context).appName,
       scaffoldMessengerKey: scaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
       // i18n

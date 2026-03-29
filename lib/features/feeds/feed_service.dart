@@ -48,7 +48,6 @@ class FeedPreviewModel {
     required this.version,
     required this.baseUrl,
     required this.allowedDomains,
-    required this.isUpgrade,
     this.author,
     this.description,
     this.currentVersion,
@@ -63,7 +62,6 @@ class FeedPreviewModel {
   final String? description;
   final String baseUrl;
   final List<String> allowedDomains;
-  final bool isUpgrade;
   final String? currentVersion;
 
   /// Non-null when the preview failed.
@@ -303,7 +301,6 @@ class FeedService {
             description: msg.description,
             baseUrl: msg.baseUrl,
             allowedDomains: List.unmodifiable(msg.allowedDomains),
-            isUpgrade: msg.isUpgrade,
             currentVersion: msg.currentVersion,
             error: msg.error,
           );

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use rinf::{DartSignal, RustSignal, SignalPiece};
 use serde::{Deserialize, Serialize};
 
@@ -224,9 +226,7 @@ pub struct FeedPreviewResult {
     pub base_url: String,
     /// Allowed domain patterns declared by the feed (`@allowed_domains`).
     /// Empty means no restriction.
-    pub allowed_domains: Vec<String>,
-    /// `true` if a feed with the same `id` is already installed (upgrade flow).
-    pub is_upgrade: bool,
+    pub allowed_domains: HashSet<String>,
     /// The currently installed version, populated only when `is_upgrade` is `true`.
     pub current_version: Option<String>,
     /// Human-readable error message; present only on failure.

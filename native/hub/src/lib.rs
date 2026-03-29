@@ -79,9 +79,24 @@ fn localize_error(e: &langhuan::error::Error) -> String {
         Error::DomainNotAllowed { url, allowed } => t!(
             "error.domain_not_allowed",
             url = url.as_str(),
-            allowed = allowed.join(", ")
+            allowed = join(allowed.iter().map(|s| s.as_str()), ", ")
         )
         .to_string(),
         Error::RegistryWrite(msg) => t!("error.registry_write", error = msg.as_str()).to_string(),
     }
+}
+
+fn join<'a>(mut iter: impl Iterator<Item = &'a str>, joiner: &str) -> String {
+    let mut joined = String::new();
+
+    if let Some(item) = iter.next() {
+        joined.push_str(item);
+    }
+
+    for item in iter {
+        joined.push_str(joiner);
+        joined.push_str(item);
+    }
+
+    joined
 }

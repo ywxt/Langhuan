@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use async_stream::stream;
@@ -303,7 +303,7 @@ impl LuaFeed {
 /// Each entry in `allowed_domains` must be an exact hostname.
 /// Returns `true` if the host is allowed, `false` if the URL cannot be parsed
 /// or the host is not in the list.
-fn domain_allowed(url: &str, allowed_domains: &[String]) -> bool {
+fn domain_allowed(url: &str, allowed_domains: &HashSet<String>) -> bool {
     let parsed = match reqwest::Url::parse(url) {
         Ok(u) => u,
         Err(_) => return false,
@@ -312,7 +312,7 @@ fn domain_allowed(url: &str, allowed_domains: &[String]) -> bool {
         Some(h) => h,
         None => return false,
     };
-    allowed_domains.iter().any(|domain| host == domain.as_str())
+    allowed_domains.contains(host)
 }
 
 // ---------------------------------------------------------------------------

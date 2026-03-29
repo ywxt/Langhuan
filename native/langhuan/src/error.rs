@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 /// Errors that can occur in the langhuan feed engine.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -64,7 +66,7 @@ pub enum Error {
         /// The blocked URL.
         url: String,
         /// The list of allowed domain patterns from the feed metadata.
-        allowed: Vec<String>,
+        allowed: HashSet<String>,
     },
 
     /// A write to the registry directory or script file failed.

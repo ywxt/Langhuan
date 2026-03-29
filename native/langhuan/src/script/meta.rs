@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use serde::Serialize;
 
@@ -12,14 +12,12 @@ use crate::error::{Error, Result};
 /// -- ==Feed==
 /// -- @id           example-feed
 /// -- @name         範例書源
-/// -- @name:en      Example Feed
 /// -- @version      1.0.0
 /// -- @author       someone
 /// -- @description  一個範例書源
 /// -- @base_url     https://example.com
-/// -- @charset      utf-8
-/// -- @content_type html
-/// -- @allowed_domains example.com, cdn.example.com
+/// -- @allowed_domain example.com
+/// -- @allowed_domain cdn.example.com
 /// -- ==/Feed==
 /// ```
 #[derive(Debug, Clone, Serialize)]
@@ -28,30 +26,20 @@ pub struct FeedMeta {
     pub id: String,
     /// Display name of the feed (default locale).
     pub name: String,
-    /// Localised names keyed by locale code (e.g. `"en"`, `"zh"`).
-    pub name_i18n: HashMap<String, String>,
     /// Version string (e.g. `"1.0.0"`).
     pub version: String,
     /// Author of the feed script.
     pub author: Option<String>,
     /// Short description (default locale).
     pub description: Option<String>,
-    /// Localised descriptions keyed by locale code.
-    pub description_i18n: HashMap<String, String>,
     /// Base URL used by the feed. Available in Lua as `meta.base_url`.
     pub base_url: String,
-    /// Character encoding of HTTP responses (e.g. `"utf-8"`, `"gbk"`).
-    /// Defaults to `"utf-8"` if omitted.
-    pub charset: String,
-    /// Expected response content type hint (`"html"` or `"json"`).
-    /// Defaults to `"html"` if omitted.
-    pub content_type: String,
     /// Allowed domain patterns for HTTP requests made by this feed.
     ///
     /// An empty list means **no restriction** (all domains are allowed).
     /// Each pattern is either an exact hostname (`example.com`) or a wildcard
     /// subdomain pattern (`*.example.com`).
-    pub allowed_domains: Vec<String>,
+    pub allowed_domains: HashSet<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -176,47 +164,28 @@ fn script_offset_of_line(s: &str, n: usize) -> usize {
 struct FeedMetaBuilder {
     id: Option<String>,
     name: Option<String>,
-    name_i18n: HashMap<String, String>,
     version: Option<String>,
     author: Option<String>,
     description: Option<String>,
-    description_i18n: HashMap<String, String>,
     base_url: Option<String>,
-    charset: Option<String>,
-    content_type: Option<String>,
-    allowed_domains: Vec<String>,
+    allowed_domains: HashSet<String>,
 }
 
 impl FeedMetaBuilder {
     /// Set a field from a raw header key (e.g. `"name"` or `"name:en"`).
     fn set(&mut self, key: &str, value: String) {
-        // Split key into base and optional locale, e.g. "name:en" → ("name", Some("en")).
-        let (base_key, locale) = match key.split_once(':') {
-            Some((base, loc)) => (base, Some(loc)),
-            None => (key, None),
-        };
-
-        match (base_key, locale) {
-            ("id", None) => self.id = Some(value),
-            ("name", None) => self.name = Some(value),
-            ("name", Some(loc)) => {
-                self.name_i18n.insert(loc.to_owned(), value);
-            }
-            ("version", None) => self.version = Some(value),
-            ("author", None) => self.author = Some(value),
-            ("description", None) => self.description = Some(value),
-            ("description", Some(loc)) => {
-                self.description_i18n.insert(loc.to_owned(), value);
-            }
-            ("base_url", None) => self.base_url = Some(value),
-            ("charset", None) => self.charset = Some(value),
-            ("content_type", None) => self.content_type = Some(value),
-            ("allowed_domains", None) => {
-                self.allowed_domains = value
-                    .split(',')
-                    .map(|s| s.trim().to_owned())
-                    .filter(|s| !s.is_empty())
-                    .collect();
+        match key {
+            "id" => self.id = Some(value),
+            "name" => self.name = Some(value),
+            "version" => self.version = Some(value),
+            "author" => self.author = Some(value),
+            "description" => self.description = Some(value),
+            "base_url" => self.base_url = Some(value),
+            "allowed_domain" => {
+                let domain = value.trim().to_owned();
+                if !domain.is_empty() {
+                    self.allowed_domains.insert(domain);
+                }
             }
             _ => {
                 // Unknown keys are silently ignored for forward compatibility.
@@ -239,14 +208,10 @@ impl FeedMetaBuilder {
         Ok(FeedMeta {
             id: require(self.id, "id")?,
             name: require(self.name, "name")?,
-            name_i18n: self.name_i18n,
             version: require(self.version, "version")?,
             author: self.author,
             description: self.description,
-            description_i18n: self.description_i18n,
             base_url: require(self.base_url, "base_url")?,
-            charset: self.charset.unwrap_or_else(|| "utf-8".to_owned()),
-            content_type: self.content_type.unwrap_or_else(|| "html".to_owned()),
             allowed_domains: {
                 for entry in &self.allowed_domains {
                     if !is_valid_hostname(entry) {
@@ -291,13 +256,10 @@ mod tests {
     const SAMPLE_SCRIPT: &str = r#"-- ==Feed==
 -- @id           example-feed
 -- @name         範例書源
--- @name:en      Example Feed
 -- @version      1.0.0
 -- @author       someone
 -- @description  一個範例書源
 -- @base_url     https://example.com
--- @charset      utf-8
--- @content_type html
 -- ==/Feed==
 
 function search_request(keyword, cursor)
@@ -310,16 +272,10 @@ end
         let (meta, offset) = parse_meta(SAMPLE_SCRIPT).unwrap();
         assert_eq!(meta.id, "example-feed");
         assert_eq!(meta.name, "範例書源");
-        assert_eq!(
-            meta.name_i18n.get("en").map(String::as_str),
-            Some("Example Feed")
-        );
         assert_eq!(meta.version, "1.0.0");
         assert_eq!(meta.author.as_deref(), Some("someone"));
         assert_eq!(meta.description.as_deref(), Some("一個範例書源"));
         assert_eq!(meta.base_url, "https://example.com");
-        assert_eq!(meta.charset, "utf-8");
-        assert_eq!(meta.content_type, "html");
         // Body should start after the header.
         assert!(offset > 0);
         assert!(SAMPLE_SCRIPT[offset..].contains("function search_request"));
@@ -356,9 +312,52 @@ end
 -- ==/Feed==
 "#;
         let (meta, _) = parse_meta(script).unwrap();
-        assert_eq!(meta.charset, "utf-8");
-        assert_eq!(meta.content_type, "html");
         assert!(meta.author.is_none());
         assert!(meta.description.is_none());
+    }
+
+    #[test]
+    fn allowed_domains_one_per_line() {
+        let script = r#"-- ==Feed==
+-- @id      test
+-- @name    Test
+-- @version 1.0
+-- @base_url https://example.com
+-- @allowed_domain example.com
+-- @allowed_domain cdn.example.com
+-- ==/Feed==
+"#;
+        let (meta, _) = parse_meta(script).unwrap();
+        assert_eq!(
+            meta.allowed_domains,
+            HashSet::from(["example.com".to_string(), "cdn.example.com".to_string()])
+        );
+    }
+
+    #[test]
+    fn allowed_domains_empty_when_omitted() {
+        let (meta, _) = parse_meta(SAMPLE_SCRIPT).unwrap();
+        assert!(meta.allowed_domains.is_empty());
+    }
+
+    #[test]
+    fn allowed_domains_invalid_hostname() {
+        let script = r#"-- ==Feed==
+-- @id      test
+-- @name    Test
+-- @version 1.0
+-- @base_url https://example.com
+-- @allowed_domain not a valid host
+-- ==/Feed==
+"#;
+        let err = parse_meta(script).unwrap_err();
+        assert!(matches!(err, Error::InvalidFeed { .. }));
+    }
+
+    #[test]
+    fn allowed_domains_blank_value_ignored() {
+        let script = "-- ==Feed==\n-- @id test\n-- @name Test\n-- @version 1.0\n-- @base_url https://example.com\n-- @allowed_domain\n-- ==/Feed==\n";
+        let (meta, _) = parse_meta(script).unwrap();
+        assert!(meta.allowed_domains.is_empty());
     }
 }

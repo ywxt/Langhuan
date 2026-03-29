@@ -12,7 +12,7 @@
 //!   [`StreamActor`](super::stream_actor::StreamActor)) to look up a
 //!   pre-compiled [`LuaFeed`] by feed ID.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
@@ -27,9 +27,9 @@ use tokio::task::JoinSet;
 
 use crate::localize_error;
 use crate::signals::{
-    FeedInstallResult, FeedListResult, FeedMetaItem, FeedPreviewResult, InstallFeedRequest,
-    ListFeedsRequest, PreviewFeedFromFile, PreviewFeedFromUrl, RemoveFeedRequest, FeedRemoveResult,
-    ScriptDirectorySet, SetScriptDirectory,
+    FeedInstallResult, FeedListResult, FeedMetaItem, FeedPreviewResult, FeedRemoveResult,
+    InstallFeedRequest, ListFeedsRequest, PreviewFeedFromFile, PreviewFeedFromUrl,
+    RemoveFeedRequest, ScriptDirectorySet, SetScriptDirectory,
 };
 
 // ---------------------------------------------------------------------------
@@ -230,8 +230,7 @@ impl RegistryActor {
                     author: None,
                     description: None,
                     base_url: String::new(),
-                    allowed_domains: vec![],
-                    is_upgrade: false,
+                    allowed_domains: HashSet::new(),
                     current_version: None,
                     error: Some(localize_error(&e)),
                 };
@@ -254,8 +253,7 @@ impl RegistryActor {
                     author: None,
                     description: None,
                     base_url: String::new(),
-                    allowed_domains: vec![],
-                    is_upgrade: false,
+                    allowed_domains: HashSet::new(),
                     current_version: None,
                     error: Some(msg),
                 };
@@ -352,22 +350,17 @@ impl RegistryActor {
                     author: None,
                     description: None,
                     base_url: String::new(),
-                    allowed_domains: vec![],
-                    is_upgrade: false,
+                    allowed_domains: HashSet::new(),
                     current_version: None,
                     error: Some(localize_error(&e)),
                 };
             }
         };
 
-        let (is_upgrade, current_version) = match &self.registry {
-            Some(reg) => (
-                reg.has_entry(&meta.id),
-                reg.entry(&meta.id).map(|entry| entry.version.clone()),
-            ),
-            None => (false, None),
-        };
-
+        let current_version = self
+            .registry
+            .as_ref()
+            .and_then(|reg| reg.entry(&meta.id).map(|entry| entry.version.clone()));
         self.pending_installs.insert(request_id.clone(), content);
 
         FeedPreviewResult {
@@ -379,7 +372,6 @@ impl RegistryActor {
             description: meta.description.clone(),
             base_url: meta.base_url.clone(),
             allowed_domains: meta.allowed_domains.clone(),
-            is_upgrade,
             current_version,
             error: None,
         }
@@ -395,23 +387,16 @@ impl Handler<GetFeed> for RegistryActor {
     type Result = Result<Arc<LuaFeed>, ResolveError>;
 
     async fn handle(&mut self, msg: GetFeed, _: &Context<Self>) -> Self::Result {
-        let registry = self
-            .registry
-            .as_ref()
-            .ok_or(ResolveError::DirNotSet)?;
+        let registry = self.registry.as_ref().ok_or(ResolveError::DirNotSet)?;
 
         if let Some((_, feed)) = registry.feed(&msg.feed_id) {
             return Ok(Arc::clone(feed));
         }
 
         if registry.has_entry(&msg.feed_id) {
-            Err(ResolveError::Unavailable {
-                id: msg.feed_id,
-            })
+            Err(ResolveError::Unavailable { id: msg.feed_id })
         } else {
-            Err(ResolveError::NotFound {
-                id: msg.feed_id,
-            })
+            Err(ResolveError::NotFound { id: msg.feed_id })
         }
     }
 }

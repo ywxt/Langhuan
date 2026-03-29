@@ -109,7 +109,7 @@ class FeedPreviewContent extends StatelessWidget {
             ],
           ),
           // ── Upgrade banner ──
-          if (preview.isUpgrade && preview.currentVersion != null) ...[
+          if (preview.currentVersion != null) ...[
             const SizedBox(height: LanghuanTheme.spaceSm),
             Container(
               padding: const EdgeInsets.symmetric(
