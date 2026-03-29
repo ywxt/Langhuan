@@ -7,6 +7,7 @@ import 'package:langhuan/rust_init.dart';
 import 'l10n/app_localizations.dart';
 import 'router/app_router.dart';
 import 'shared/theme/app_theme.dart';
+import 'src/bindings/signals/signals.dart';
 
 final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
@@ -50,13 +51,16 @@ class _LanghuanAppState extends ConsumerState<LanghuanApp> {
 
     ref.listen(scriptDirectorySetProvider, (previous, next) {
       next.whenData((result) {
-        if (result.success) return;
-        debugPrint('Feed load error: ${result.error}');
+        final outcome = result.outcome;
+        if (outcome is! ScriptDirectoryOutcomeError) return;
+        debugPrint('Feed load error: ${outcome.message}');
         final snackContext = scaffoldMessengerKey.currentContext;
         final fallback = snackContext == null
             ? 'Failed to load feeds'
             : AppLocalizations.of(snackContext).feedsLoadError;
-        _showGlobalErrorSnack(result.error ?? fallback);
+        _showGlobalErrorSnack(
+          outcome.message.isNotEmpty ? outcome.message : fallback,
+        );
       });
       next.when(
         data: (_) {},

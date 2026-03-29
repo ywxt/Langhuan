@@ -52,37 +52,37 @@ async fn main() {
 fn localize_error(e: &langhuan::error::Error) -> String {
     use langhuan::error::Error;
     match e {
-        Error::Lua(inner) => t!("error.lua", error = inner.to_string()).to_string(),
-        Error::Http(inner) => t!("error.http", error = inner.to_string()).to_string(),
+        Error::Lua(inner) => t!("error.lua", error = inner).to_string(),
+        Error::Http(inner) => t!("error.http", error = inner).to_string(),
         Error::MissingFunction { name } => {
-            t!("error.missing_function", name = name.as_str()).to_string()
+            t!("error.missing_function", name = name).to_string()
         }
         Error::InvalidFeed { message } => {
-            t!("error.invalid_feed", message = message.as_str()).to_string()
+            t!("error.invalid_feed", message = message).to_string()
         }
         Error::ScriptParse { line, message } => t!(
             "error.script_parse",
-            line = line.to_string(),
-            message = message.as_str()
+            line = line,
+            message = message
         )
         .to_string(),
         Error::RegistryNotFound(inner) => {
-            t!("error.registry_not_found", error = inner.to_string()).to_string()
+            t!("error.registry_not_found", error = inner).to_string()
         }
         Error::RegistryParse { message } => {
-            t!("error.registry_parse", message = message.as_str()).to_string()
+            t!("error.registry_parse", message = message).to_string()
         }
-        Error::FeedNotFound { id } => t!("error.feed_not_found", id = id.as_str()).to_string(),
+        Error::FeedNotFound { id } => t!("error.feed_not_found", id = id).to_string(),
         Error::DuplicateFeedId { id } => {
-            t!("error.duplicate_feed_id", id = id.as_str()).to_string()
+            t!("error.duplicate_feed_id", id = id).to_string()
         }
         Error::DomainNotAllowed { url, allowed } => t!(
             "error.domain_not_allowed",
-            url = url.as_str(),
+            url = url,
             allowed = join(allowed.iter().map(|s| s.as_str()), ", ")
         )
         .to_string(),
-        Error::RegistryWrite(msg) => t!("error.registry_write", error = msg.as_str()).to_string(),
+        Error::RegistryWrite(msg) => t!("error.registry_write", error = msg).to_string(),
     }
 }
 

@@ -349,8 +349,9 @@ class FeedListNotifier extends Notifier<FeedListState> {
       return const FeedListState();
     }
 
-    if (!result.success) {
-      return FeedListState(error: result.error ?? 'script directory not ready');
+    final outcome = result.outcome;
+    if (outcome is ScriptDirectoryOutcomeError) {
+      return FeedListState(error: outcome.message);
     }
 
     if (!_requestedInitialLoad) {
@@ -375,10 +376,12 @@ class FeedListNotifier extends Notifier<FeedListState> {
       return;
     }
 
-    if (result == null || !result.success) {
-      state = FeedListState(
-        error: result?.error ?? 'script directory not ready',
-      );
+    if (result == null || result.outcome is ScriptDirectoryOutcomeError) {
+      final outcome = result?.outcome;
+      final message = outcome is ScriptDirectoryOutcomeError
+          ? outcome.message
+          : 'script directory not ready';
+      state = FeedListState(error: message);
       return;
     }
 
@@ -401,8 +404,9 @@ class FeedListNotifier extends Notifier<FeedListState> {
 
     try {
       final result = await FeedService.instance.removeFeed(feedId);
-      if (!result.success) {
-        return result.error ?? 'unknown error';
+      final outcome = result.outcome;
+      if (outcome is FeedRemoveOutcomeError) {
+        return outcome.message;
       }
 
       final selected = ref.read(selectedFeedProvider);

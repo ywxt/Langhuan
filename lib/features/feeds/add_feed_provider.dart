@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../src/bindings/signals/signals.dart';
 import 'feed_providers.dart';
 import 'feed_service.dart';
 
@@ -48,22 +49,22 @@ class AddFeedNotifier extends Notifier<AddFeedState> {
   /// Preview a feed script from a remote [url].
   Future<void> previewFromUrl(String url) async {
     state = const AddFeedLoading();
-    final preview = await FeedService.instance.previewFromUrl(url);
-    if (preview.hasError) {
-      state = AddFeedError(message: preview.error!);
-    } else {
+    try {
+      final preview = await FeedService.instance.previewFromUrl(url);
       state = AddFeedPreview(preview: preview);
+    } on FeedPreviewException catch (e) {
+      state = AddFeedError(message: e.message);
     }
   }
 
   /// Preview a feed script from a local file [path] (Rust reads the file).
   Future<void> previewFromFile(String path) async {
     state = const AddFeedLoading();
-    final preview = await FeedService.instance.previewFromFile(path);
-    if (preview.hasError) {
-      state = AddFeedError(message: preview.error!);
-    } else {
+    try {
+      final preview = await FeedService.instance.previewFromFile(path);
       state = AddFeedPreview(preview: preview);
+    } on FeedPreviewException catch (e) {
+      state = AddFeedError(message: e.message);
     }
   }
 
@@ -81,12 +82,14 @@ class AddFeedNotifier extends Notifier<AddFeedState> {
       current.preview.requestId,
     );
 
-    if (result.success) {
-      // Refresh the feed list so the newly installed feed appears.
-      ref.read(feedListProvider.notifier).load();
-      state = const AddFeedSuccess();
-    } else {
-      state = AddFeedError(message: result.error ?? 'unknown error');
+    final outcome = result.outcome;
+    switch (outcome) {
+      case FeedInstallOutcomeSuccess():
+        // Refresh the feed list so the newly installed feed appears.
+        ref.read(feedListProvider.notifier).load();
+        state = const AddFeedSuccess();
+      case FeedInstallOutcomeError():
+        state = AddFeedError(message: outcome.message);
     }
   }
 

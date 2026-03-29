@@ -51,7 +51,6 @@ class FeedPreviewModel {
     this.author,
     this.description,
     this.currentVersion,
-    this.error,
   });
 
   final String requestId;
@@ -63,11 +62,6 @@ class FeedPreviewModel {
   final String baseUrl;
   final List<String> allowedDomains;
   final String? currentVersion;
-
-  /// Non-null when the preview failed.
-  final String? error;
-
-  bool get hasError => error != null;
 }
 
 // ---------------------------------------------------------------------------
@@ -200,7 +194,7 @@ class FeedService {
   // -------------------------------------------------------------------------
 
   /// Cancel an in-progress stream.  Rust will stop emitting items and send a
-  /// [FeedStreamEnd] with `status == FeedStreamStatus.cancelled`.
+  /// [FeedStreamEnd] with `outcome == FeedStreamOutcomeCancelled`.
   void cancel(String requestId) {
     FeedCancelRequest(requestId: requestId).sendSignalToRust();
   }
@@ -244,8 +238,8 @@ class FeedService {
   /// Request a preview of a feed script from a remote [url].
   ///
   /// Returns a [Future] that resolves to a [FeedPreviewModel] once Rust has
-  /// downloaded and parsed the script.  Check [FeedPreviewModel.hasError] for
-  /// failures.
+  /// downloaded and parsed the script.  Throws a [FeedPreviewException] on
+  /// failure.
   Future<FeedPreviewModel> previewFromUrl(String url) async {
     final requestId = _nextId();
     PreviewFeedFromUrl(requestId: requestId, url: url).sendSignalToRust();
@@ -254,7 +248,7 @@ class FeedService {
 
   /// Request a preview of a feed script from a local file [path].
   /// Rust reads the file, decodes it as UTF-8, and responds with a
-  /// [FeedPreviewModel].  Check [FeedPreviewModel.hasError] for failures.
+  /// [FeedPreviewModel].  Throws a [FeedPreviewException] on failure.
   Future<FeedPreviewModel> previewFromFile(String path) async {
     final requestId = _nextId();
     PreviewFeedFromFile(requestId: requestId, path: path).sendSignalToRust();
@@ -291,18 +285,21 @@ class FeedService {
         .where((pack) => pack.message.requestId == requestId)
         .first
         .then((pack) {
-          final msg = pack.message;
+          final outcome = pack.message.outcome;
+          if (outcome is FeedPreviewOutcomeError) {
+            throw FeedPreviewException(message: outcome.message);
+          }
+          final success = outcome as FeedPreviewOutcomeSuccess;
           return FeedPreviewModel(
-            requestId: msg.requestId,
-            id: msg.id,
-            name: msg.name,
-            version: msg.version,
-            author: msg.author,
-            description: msg.description,
-            baseUrl: msg.baseUrl,
-            allowedDomains: List.unmodifiable(msg.allowedDomains),
-            currentVersion: msg.currentVersion,
-            error: msg.error,
+            requestId: pack.message.requestId,
+            id: success.id,
+            name: success.name,
+            version: success.version,
+            author: success.author,
+            description: success.description,
+            baseUrl: success.baseUrl,
+            allowedDomains: List.unmodifiable(success.allowedDomains),
+            currentVersion: success.currentVersion,
           );
         });
   }
@@ -314,7 +311,7 @@ class FeedService {
   /// Build a [Stream<T>] that:
   /// - Emits items from [itemStream] as they arrive.
   /// - Terminates (closes) when the matching [FeedStreamEnd] arrives.
-  /// - Throws a [FeedStreamException] if the end status is `FeedStreamStatus.failed`.
+  /// - Throws a [FeedStreamException] if the outcome is `FeedStreamOutcomeFailed`.
   Stream<T> _buildStream<T>({
     required String requestId,
     required Stream<T> itemStream,
@@ -335,17 +332,17 @@ class FeedService {
         endSub = FeedStreamEnd.rustSignalStream
             .where((pack) => pack.message.requestId == requestId)
             .listen((pack) {
-              final msg = pack.message;
-              if (msg.status == FeedStreamStatus.failed) {
+              final outcome = pack.message.outcome;
+              if (outcome is FeedStreamOutcomeFailed) {
                 controller.addError(
                   FeedStreamException(
                     requestId: requestId,
-                    message: msg.error ?? 'unknown error',
-                    retriedCount: msg.retriedCount,
+                    message: outcome.error,
+                    retriedCount: outcome.retriedCount,
                   ),
                 );
               }
-              // Close regardless of status (completed / cancelled / failed).
+              // Close regardless of outcome (completed / cancelled / failed).
               controller.close();
             });
       },
@@ -379,4 +376,13 @@ class FeedStreamException implements Exception {
   @override
   String toString() =>
       'FeedStreamException[$requestId]: $message (retried $retriedCount times)';
+}
+
+class FeedPreviewException implements Exception {
+  const FeedPreviewException({required this.message});
+
+  final String message;
+
+  @override
+  String toString() => 'FeedPreviewException: $message';
 }

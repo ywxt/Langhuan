@@ -12,7 +12,7 @@
 //!   [`StreamActor`](super::stream_actor::StreamActor)) to look up a
 //!   pre-compiled [`LuaFeed`] by feed ID.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
@@ -27,9 +27,10 @@ use tokio::task::JoinSet;
 
 use crate::localize_error;
 use crate::signals::{
-    FeedInstallResult, FeedListResult, FeedMetaItem, FeedPreviewResult, FeedRemoveResult,
-    InstallFeedRequest, ListFeedsRequest, PreviewFeedFromFile, PreviewFeedFromUrl,
-    RemoveFeedRequest, ScriptDirectorySet, SetScriptDirectory,
+    FeedInstallOutcome, FeedInstallResult, FeedListResult, FeedMetaItem, FeedPreviewOutcome,
+    FeedPreviewResult, FeedRemoveOutcome, FeedRemoveResult, InstallFeedRequest, ListFeedsRequest,
+    PreviewFeedFromFile, PreviewFeedFromUrl, RemoveFeedRequest, ScriptDirectoryOutcome,
+    ScriptDirectorySet, SetScriptDirectory,
 };
 
 // ---------------------------------------------------------------------------
@@ -121,26 +122,26 @@ impl RegistryActor {
     async fn do_set_directory(&mut self, req: SetScriptDirectory) -> ScriptDirectorySet {
         if self.registry.is_some() {
             return ScriptDirectorySet {
-                success: false,
-                feed_count: 0,
-                error: Some(t!("error.registry_reload_not_supported").to_string()),
+                outcome: ScriptDirectoryOutcome::Error {
+                    message: t!("error.registry_reload_not_supported").to_string(),
+                },
             };
         }
         // Create the directory (and any parents) if it does not exist yet.
         if let Err(e) = tokio::fs::create_dir_all(&req.path).await {
             return ScriptDirectorySet {
-                success: false,
-                feed_count: 0,
-                error: Some(e.to_string()),
+                outcome: ScriptDirectoryOutcome::Error {
+                    message: e.to_string(),
+                },
             };
         }
 
         // Ensure registry.toml exists (creates an empty one on first run).
         if let Err(e) = ScriptRegistry::ensure_registry(Path::new(&req.path)).await {
             return ScriptDirectorySet {
-                success: false,
-                feed_count: 0,
-                error: Some(localize_error(&e)),
+                outcome: ScriptDirectoryOutcome::Error {
+                    message: localize_error(&e),
+                },
             };
         }
 
@@ -148,9 +149,9 @@ impl RegistryActor {
             Ok(r) => r,
             Err(e) => {
                 return ScriptDirectorySet {
-                    success: false,
-                    feed_count: 0,
-                    error: Some(localize_error(&e)),
+                    outcome: ScriptDirectoryOutcome::Error {
+                        message: localize_error(&e),
+                    },
                 };
             }
         };
@@ -190,9 +191,10 @@ impl RegistryActor {
         self.load_errors = load_errors;
 
         ScriptDirectorySet {
-            success: error_summary.is_none(),
-            feed_count,
-            error: error_summary,
+            outcome: match error_summary {
+                None => ScriptDirectoryOutcome::Success { feed_count },
+                Some(message) => ScriptDirectoryOutcome::Error { message },
+            },
         }
     }
 
@@ -224,15 +226,9 @@ impl RegistryActor {
             Err(e) => {
                 return FeedPreviewResult {
                     request_id: req.request_id,
-                    id: String::new(),
-                    name: String::new(),
-                    version: String::new(),
-                    author: None,
-                    description: None,
-                    base_url: String::new(),
-                    allowed_domains: HashSet::new(),
-                    current_version: None,
-                    error: Some(localize_error(&e)),
+                    outcome: FeedPreviewOutcome::Error {
+                        message: localize_error(&e),
+                    },
                 };
             }
         };
@@ -244,18 +240,10 @@ impl RegistryActor {
         let content = match tokio::fs::read_to_string(&req.path).await {
             Ok(c) => c,
             Err(e) => {
-                let msg = t!("error.file_read", error = e.to_string()).to_string();
+                let message = t!("error.file_read", error = e.to_string()).to_string();
                 return FeedPreviewResult {
                     request_id: req.request_id,
-                    id: String::new(),
-                    name: String::new(),
-                    version: String::new(),
-                    author: None,
-                    description: None,
-                    base_url: String::new(),
-                    allowed_domains: HashSet::new(),
-                    current_version: None,
-                    error: Some(msg),
+                    outcome: FeedPreviewOutcome::Error { message },
                 };
             }
         };
@@ -269,8 +257,9 @@ impl RegistryActor {
             None => {
                 return FeedInstallResult {
                     request_id: req.request_id,
-                    success: false,
-                    error: Some(t!("error.no_pending_preview").to_string()),
+                    outcome: FeedInstallOutcome::Error {
+                        message: t!("error.no_pending_preview").to_string(),
+                    },
                 };
             }
         };
@@ -280,8 +269,9 @@ impl RegistryActor {
             None => {
                 return FeedInstallResult {
                     request_id: req.request_id,
-                    success: false,
-                    error: Some(t!("error.script_dir_not_set").to_string()),
+                    outcome: FeedInstallOutcome::Error {
+                        message: t!("error.script_dir_not_set").to_string(),
+                    },
                 };
             }
         };
@@ -291,8 +281,9 @@ impl RegistryActor {
             Err(e) => {
                 return FeedInstallResult {
                     request_id: req.request_id,
-                    success: false,
-                    error: Some(localize_error(&e)),
+                    outcome: FeedInstallOutcome::Error {
+                        message: localize_error(&e),
+                    },
                 };
             }
         };
@@ -301,8 +292,7 @@ impl RegistryActor {
 
         FeedInstallResult {
             request_id: req.request_id,
-            success: true,
-            error: None,
+            outcome: FeedInstallOutcome::Success,
         }
     }
 
@@ -313,8 +303,9 @@ impl RegistryActor {
             None => {
                 return FeedRemoveResult {
                     request_id: req.request_id,
-                    success: false,
-                    error: Some(t!("error.script_dir_not_set").to_string()),
+                    outcome: FeedRemoveOutcome::Error {
+                        message: t!("error.script_dir_not_set").to_string(),
+                    },
                 };
             }
         };
@@ -324,14 +315,14 @@ impl RegistryActor {
                 self.load_errors.remove(&req.feed_id);
                 FeedRemoveResult {
                     request_id: req.request_id,
-                    success: true,
-                    error: None,
+                    outcome: FeedRemoveOutcome::Success,
                 }
             }
             Err(e) => FeedRemoveResult {
                 request_id: req.request_id,
-                success: false,
-                error: Some(localize_error(&e)),
+                outcome: FeedRemoveOutcome::Error {
+                    message: localize_error(&e),
+                },
             },
         }
     }
@@ -344,15 +335,9 @@ impl RegistryActor {
             Err(e) => {
                 return FeedPreviewResult {
                     request_id,
-                    id: String::new(),
-                    name: String::new(),
-                    version: String::new(),
-                    author: None,
-                    description: None,
-                    base_url: String::new(),
-                    allowed_domains: HashSet::new(),
-                    current_version: None,
-                    error: Some(localize_error(&e)),
+                    outcome: FeedPreviewOutcome::Error {
+                        message: localize_error(&e),
+                    },
                 };
             }
         };
@@ -365,15 +350,16 @@ impl RegistryActor {
 
         FeedPreviewResult {
             request_id,
-            id: meta.id.clone(),
-            name: meta.name.clone(),
-            version: meta.version.clone(),
-            author: meta.author.clone(),
-            description: meta.description.clone(),
-            base_url: meta.base_url.clone(),
-            allowed_domains: meta.allowed_domains.clone(),
-            current_version,
-            error: None,
+            outcome: FeedPreviewOutcome::Success {
+                id: meta.id.clone(),
+                name: meta.name.clone(),
+                version: meta.version.clone(),
+                author: meta.author.clone(),
+                description: meta.description.clone(),
+                base_url: meta.base_url.clone(),
+                allowed_domains: meta.allowed_domains.clone(),
+                current_version,
+            },
         }
     }
 }

@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use rinf::{DartSignal, RustSignal, SignalPiece};
 use serde::{Deserialize, Serialize};
 
-
 // ---------------------------------------------------------------------------
 // Feed signals — Dart → Rust (requests)
 // ---------------------------------------------------------------------------
@@ -85,12 +84,17 @@ pub struct ChapterParagraphItem {
     pub paragraph: ParagraphContent,
 }
 
-/// The terminal status of a feed stream.
+/// The outcome of a feed stream.
 #[derive(Serialize, SignalPiece)]
-pub enum FeedStreamStatus {
+pub enum FeedStreamOutcome {
     Completed,
     Cancelled,
-    Failed,
+    Failed {
+        /// Human-readable error message.
+        error: String,
+        /// Number of retry attempts made before the final outcome.
+        retried_count: u32,
+    },
 }
 
 /// Terminal signal for any feed stream.  Always emitted exactly once per
@@ -98,11 +102,7 @@ pub enum FeedStreamStatus {
 #[derive(Serialize, RustSignal)]
 pub struct FeedStreamEnd {
     pub request_id: String,
-    pub status: FeedStreamStatus,
-    /// Human-readable error message, present only when `status == Failed`.
-    pub error: Option<String>,
-    /// Number of retry attempts made before the final outcome.
-    pub retried_count: u32,
+    pub outcome: FeedStreamOutcome,
 }
 
 // ---------------------------------------------------------------------------
@@ -129,15 +129,23 @@ pub struct ListFeedsRequest {
 // Registry signals — Rust → Dart
 // ---------------------------------------------------------------------------
 
+/// The outcome of setting the script directory.
+#[derive(Serialize, SignalPiece)]
+pub enum ScriptDirectoryOutcome {
+    Success {
+        /// Number of feeds found in the registry.
+        feed_count: u32,
+    },
+    Error {
+        /// Human-readable error message.
+        message: String,
+    },
+}
+
 /// Confirmation that the script directory has been (re-)loaded.
 #[derive(Serialize, RustSignal)]
 pub struct ScriptDirectorySet {
-    /// `true` if the registry was loaded successfully.
-    pub success: bool,
-    /// Number of feeds found in the registry (0 on failure).
-    pub feed_count: u32,
-    /// Human-readable error message, present only when `success == false`.
-    pub error: Option<String>,
+    pub outcome: ScriptDirectoryOutcome,
 }
 
 /// Metadata for a single feed entry, used inside [`FeedListResult`].
@@ -211,41 +219,66 @@ pub struct RemoveFeedRequest {
 // Feed install signals — Rust → Dart (responses)
 // ---------------------------------------------------------------------------
 
+/// The outcome of a feed preview request.
+#[derive(Serialize, SignalPiece)]
+pub enum FeedPreviewOutcome {
+    Success {
+        id: String,
+        name: String,
+        version: String,
+        author: Option<String>,
+        description: Option<String>,
+        base_url: String,
+        /// Allowed domain patterns declared by the feed (`@allowed_domains`).
+        /// Empty means no restriction.
+        allowed_domains: HashSet<String>,
+        /// The currently installed version, populated only when upgrading.
+        current_version: Option<String>,
+    },
+    Error {
+        /// Human-readable error message.
+        message: String,
+    },
+}
+
 /// Summary of a parsed feed script, sent in response to a preview request.
-///
-/// On success `error` is `None` and all other fields are populated.
-/// On failure `error` is `Some(message)` and other fields may be empty.
 #[derive(Serialize, RustSignal)]
 pub struct FeedPreviewResult {
     pub request_id: String,
-    pub id: String,
-    pub name: String,
-    pub version: String,
-    pub author: Option<String>,
-    pub description: Option<String>,
-    pub base_url: String,
-    /// Allowed domain patterns declared by the feed (`@allowed_domains`).
-    /// Empty means no restriction.
-    pub allowed_domains: HashSet<String>,
-    /// The currently installed version, populated only when `is_upgrade` is `true`.
-    pub current_version: Option<String>,
-    /// Human-readable error message; present only on failure.
-    pub error: Option<String>,
+    pub outcome: FeedPreviewOutcome,
+}
+
+/// The outcome of a feed install request.
+#[derive(Serialize, SignalPiece)]
+pub enum FeedInstallOutcome {
+    Success,
+    Error {
+        /// Human-readable error message.
+        message: String,
+    },
 }
 
 /// Result of a [`InstallFeedRequest`].
 #[derive(Serialize, RustSignal)]
 pub struct FeedInstallResult {
     pub request_id: String,
-    pub success: bool,
-    pub error: Option<String>,
+    pub outcome: FeedInstallOutcome,
+}
+
+/// The outcome of a feed remove request.
+#[derive(Serialize, SignalPiece)]
+pub enum FeedRemoveOutcome {
+    Success,
+    Error {
+        /// Human-readable error message.
+        message: String,
+    },
 }
 
 /// Result of a [`RemoveFeedRequest`].
 #[derive(Serialize, RustSignal)]
 pub struct FeedRemoveResult {
     pub request_id: String,
-    pub success: bool,
-    pub error: Option<String>,
+    pub outcome: FeedRemoveOutcome,
 }
 

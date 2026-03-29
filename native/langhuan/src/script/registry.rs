@@ -28,9 +28,9 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
+use super::engine::ScriptEngine;
+use super::lua_feed::LuaFeed;
 use crate::error::{Error, Result};
-use crate::script::engine::ScriptEngine;
-use crate::script::lua_feed::LuaFeed;
 
 // ---------------------------------------------------------------------------
 // TOML data structures
@@ -360,11 +360,8 @@ impl ScriptRegistry {
     }
 
     async fn persist_registry(&self) -> Result<()> {
-        let mut entries: Vec<RegistryEntry> = self
-            .feeds
-            .values()
-            .map(|item| item.entry.clone())
-            .collect();
+        let mut entries: Vec<RegistryEntry> =
+            self.feeds.values().map(|item| item.entry.clone()).collect();
         entries.sort_by(|a, b| a.id.cmp(&b.id));
 
         let registry_file = RegistryFile { feeds: entries };
@@ -461,9 +458,9 @@ mod tests {
 return {}
 "#;
 
-        fn make_valid_script(feed_id: &str, version: &str) -> String {
-                format!(
-                        r#"-- ==Feed==
+    fn make_valid_script(feed_id: &str, version: &str) -> String {
+        format!(
+            r#"-- ==Feed==
 -- @id      {feed_id}
 -- @name    Test Feed
 -- @version {version}
@@ -488,48 +485,48 @@ return {{
     }},
 }}
 "#
-                )
+        )
+    }
+
+    async fn compile_feed(script: &str) -> Arc<LuaFeed> {
+        let engine = ScriptEngine::new();
+        Arc::new(engine.load_feed(script).await.expect("compile feed"))
+    }
+
+    async fn create_registry_with_single_feed(
+        base_dir: &Path,
+        feed_id: &str,
+        version: &str,
+    ) -> ScriptRegistry {
+        let script = make_valid_script(feed_id, version);
+        let compiled_feed = compile_feed(&script).await;
+
+        let entry = RegistryEntry {
+            id: feed_id.to_owned(),
+            name: "Test Feed".to_owned(),
+            version: version.to_owned(),
+            author: None,
+            file: format!("{feed_id}/{version}.lua"),
+        };
+
+        let script_path = base_dir.join(&entry.file);
+        if let Some(parent) = script_path.parent() {
+            fs::create_dir_all(parent)
+                .await
+                .expect("create feed script dir");
         }
+        fs::write(&script_path, script)
+            .await
+            .expect("write feed script");
 
-        async fn compile_feed(script: &str) -> Arc<LuaFeed> {
-                let engine = ScriptEngine::new();
-                Arc::new(engine.load_feed(script).await.expect("compile feed"))
-        }
+        let mut entries = HashMap::new();
+        entries.insert(feed_id.to_owned(), entry);
 
-        async fn create_registry_with_single_feed(
-                base_dir: &Path,
-                feed_id: &str,
-                version: &str,
-        ) -> ScriptRegistry {
-                let script = make_valid_script(feed_id, version);
-                let compiled_feed = compile_feed(&script).await;
+        let mut feeds = HashMap::new();
+        feeds.insert(feed_id.to_owned(), compiled_feed);
 
-                let entry = RegistryEntry {
-                        id: feed_id.to_owned(),
-                        name: "Test Feed".to_owned(),
-                        version: version.to_owned(),
-                        author: None,
-                        file: format!("{feed_id}/{version}.lua"),
-                };
-
-                let script_path = base_dir.join(&entry.file);
-                if let Some(parent) = script_path.parent() {
-                        fs::create_dir_all(parent)
-                                .await
-                                .expect("create feed script dir");
-                }
-                fs::write(&script_path, script)
-                        .await
-                        .expect("write feed script");
-
-                let mut entries = HashMap::new();
-                entries.insert(feed_id.to_owned(), entry);
-
-                let mut feeds = HashMap::new();
-                feeds.insert(feed_id.to_owned(), compiled_feed);
-
-                ScriptRegistry::new(base_dir, entries, feeds).expect("create registry")
-        }
+        ScriptRegistry::new(base_dir, entries, feeds).expect("create registry")
+    }
 
     // -----------------------------------------------------------------------
     // load: happy path
@@ -870,7 +867,8 @@ return {}
             .await
             .expect("ensure registry");
 
-        let mut registry = create_registry_with_single_feed(dir.path(), "rollback-remove", "1.0.0").await;
+        let mut registry =
+            create_registry_with_single_feed(dir.path(), "rollback-remove", "1.0.0").await;
         registry
             .persist_registry()
             .await

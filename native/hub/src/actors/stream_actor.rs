@@ -26,7 +26,7 @@ use tokio_util::task::JoinMap;
 use crate::localize_error;
 use crate::signals::{
     ChapterContentRequest, ChapterInfoItem, ChapterParagraphItem, ChaptersRequest,
-    FeedCancelRequest, FeedStreamEnd, FeedStreamStatus, ParagraphContent, SearchRequest,
+    FeedCancelRequest, FeedStreamEnd, FeedStreamOutcome, ParagraphContent, SearchRequest,
     SearchResultItem,
 };
 
@@ -111,9 +111,7 @@ impl StreamActor {
             .abort(&req.request_id)
             .then_some(FeedStreamEnd {
                 request_id: req.request_id,
-                status: FeedStreamStatus::Cancelled,
-                error: None,
-                retried_count: 0,
+                outcome: FeedStreamOutcome::Cancelled,
             })
     }
 
@@ -136,15 +134,23 @@ impl StreamActor {
         match result {
             Ok(Ok(feed)) => Some(feed),
             Ok(Err(e)) => {
-                emit_end(request_id, FeedStreamStatus::Failed, Some(e.to_string()));
+                emit_end(
+                    request_id,
+                    FeedStreamOutcome::Failed {
+                        error: e.to_string(),
+                        retried_count: 0,
+                    },
+                );
                 None
             }
             Err(e) => {
                 // Actor mailbox error — should not happen in normal operation.
                 emit_end(
                     request_id,
-                    FeedStreamStatus::Failed,
-                    Some(format!("internal error: {e}")),
+                    FeedStreamOutcome::Failed {
+                        error: format!("internal error: {e}"),
+                        retried_count: 0,
+                    },
                 );
                 None
             }
@@ -224,13 +230,11 @@ impl StreamActor {
 // Task implementations (run inside `tokio::spawn`)
 // ---------------------------------------------------------------------------
 
-/// Emit a [`FeedStreamEnd`] signal with the given status and optional error.
-fn emit_end(request_id: &str, status: FeedStreamStatus, error: Option<String>) {
+/// Emit a [`FeedStreamEnd`] signal with the given outcome.
+fn emit_end(request_id: &str, outcome: FeedStreamOutcome) {
     FeedStreamEnd {
         request_id: request_id.to_owned(),
-        status,
-        error,
-        retried_count: 0,
+        outcome,
     }
     .send_signal_to_dart();
 }
@@ -249,14 +253,16 @@ async fn run_stream<T, F>(
             Err(e) => {
                 emit_end(
                     &request_id,
-                    FeedStreamStatus::Failed,
-                    Some(localize_error(&e)),
+                    FeedStreamOutcome::Failed {
+                        error: localize_error(&e),
+                        retried_count: 0,
+                    },
                 );
                 return;
             }
         }
     }
-    emit_end(&request_id, FeedStreamStatus::Completed, None);
+    emit_end(&request_id, FeedStreamOutcome::Completed);
 }
 
 async fn run_search(feed: Arc<LuaFeed>, req: SearchRequest) {
