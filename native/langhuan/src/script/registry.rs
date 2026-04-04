@@ -105,6 +105,7 @@ impl ScriptRegistry {
     /// - [`Error::DuplicateFeedId`] — two entries share the same `id`.
     pub async fn load_entries(base_dir: &Path) -> Result<HashMap<String, RegistryEntry>> {
         let registry_path = registry_path(base_dir);
+        tracing::debug!(path = %registry_path.display(), "loading registry entries");
 
         let content = tokio::fs::read_to_string(&registry_path)
             .await
@@ -119,10 +120,13 @@ impl ScriptRegistry {
             HashMap::with_capacity(registry_file.feeds.len());
         for entry in registry_file.feeds {
             if entries.contains_key(&entry.id) {
+                tracing::warn!(feed_id = %entry.id, "duplicate feed id in registry");
                 return Err(Error::DuplicateFeedId { id: entry.id });
             }
             entries.insert(entry.id.clone(), entry);
         }
+
+        tracing::info!(entry_count = entries.len(), "registry entries loaded");
 
         Ok(entries)
     }
@@ -133,6 +137,11 @@ impl ScriptRegistry {
         engine: &ScriptEngine,
     ) -> Result<LuaFeed> {
         let script_path = base_dir.join(&entry.file);
+        tracing::debug!(
+            feed_id = %entry.id,
+            script_path = %script_path.display(),
+            "loading feed script from registry"
+        );
         let script = tokio::fs::read_to_string(&script_path)
             .await
             .map_err(Error::RegistryNotFound)?;
@@ -192,6 +201,11 @@ impl ScriptRegistry {
 
         let feed_id = &feed_meta.id;
         let version = &feed_meta.version;
+        tracing::info!(
+            feed_id = %feed_id,
+            feed_version = %version,
+            "installing feed script"
+        );
 
         // 2. Write the Lua script file.
         let script_dir = self.base_dir.join(feed_id.as_str());
@@ -246,6 +260,8 @@ impl ScriptRegistry {
             return Err(e);
         }
 
+        tracing::info!(feed_id = %feed_id, feed_version = %version, "feed installed");
+
         Ok(new_entry)
     }
 
@@ -258,6 +274,7 @@ impl ScriptRegistry {
     /// - [`Error::FeedNotFound`] — no entry with `feed_id` exists.
     /// - [`Error::RegistryWrite`] — a filesystem write failed.
     pub async fn remove_feed(&mut self, feed_id: &str) -> Result<()> {
+        tracing::info!(feed_id = %feed_id, "removing feed");
         let removed = self
             .feeds
             .remove(feed_id)
@@ -285,6 +302,8 @@ impl ScriptRegistry {
             }
             return Err(Error::RegistryWrite(e.to_string()));
         }
+
+        tracing::info!(feed_id = %feed_id, "feed removed");
 
         Ok(())
     }

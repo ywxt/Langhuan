@@ -45,6 +45,11 @@ impl ScriptEngine {
     pub async fn load_feed(&self, script: &str) -> Result<LuaFeed> {
         // 1. Parse metadata header.
         let (feed_meta, body_offset) = meta::parse_meta(script)?;
+        tracing::info!(
+            feed_id = %feed_meta.id,
+            feed_version = %feed_meta.version,
+            "loading Lua feed script"
+        );
         let script_body = &script[body_offset..];
 
         // 2. Create sandboxed Lua VM.
@@ -55,6 +60,11 @@ impl ScriptEngine {
 
         // 4. Execute the script body — must return a table.
         let handlers: FeedHandlers = lua.load(script_body).eval_async().await?;
+
+        tracing::debug!(
+            feed_id = %feed_meta.id,
+            "Lua feed handlers loaded"
+        );
 
         Ok(LuaFeed::new(
             lua,

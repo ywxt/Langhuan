@@ -158,13 +158,37 @@ impl LuaFeed {
         loop {
             let args = (keyword, cursor.clone());
             match self.execute_paged_cycle(pair, args).await {
-                Ok(page) => return Ok(page),
+                Ok(page) => {
+                    if attempt > 0 {
+                        tracing::info!(
+                            feed_id = %self.meta.id,
+                            retried_count = attempt,
+                            "paged request succeeded after retries"
+                        );
+                    }
+                    return Ok(page);
+                }
                 Err(err) if attempt < MAX_RETRIES && err.is_retryable() => {
                     let delay_ms = BASE_DELAY_MS * BACKOFF_MULTIPLIER.pow(attempt);
+                    tracing::warn!(
+                        feed_id = %self.meta.id,
+                        retried_count = attempt + 1,
+                        delay_ms,
+                        error = %err,
+                        "retryable paged request failed; retrying"
+                    );
                     sleep(Duration::from_millis(delay_ms)).await;
                     attempt += 1;
                 }
-                Err(err) => return Err(err),
+                Err(err) => {
+                    tracing::error!(
+                        feed_id = %self.meta.id,
+                        retried_count = attempt,
+                        error = %err,
+                        "paged request failed"
+                    );
+                    return Err(err);
+                }
             }
         }
     }
@@ -245,6 +269,11 @@ impl LuaFeed {
         if !self.meta.allowed_domains.is_empty()
             && !domain_allowed(&req.url, &self.meta.allowed_domains)
         {
+            tracing::warn!(
+                feed_id = %self.meta.id,
+                url = %req.url,
+                "blocked request by allowed_domains"
+            );
             return Err(crate::error::Error::DomainNotAllowed {
                 url: req.url.clone(),
                 allowed: self.meta.allowed_domains.clone(),
@@ -252,6 +281,12 @@ impl LuaFeed {
         }
 
         let method = req.method.parse().unwrap_or(reqwest::Method::GET);
+        tracing::debug!(
+            feed_id = %self.meta.id,
+            method = %method,
+            url = %req.url,
+            "sending HTTP request"
+        );
         let mut builder = self.client.request(method, &req.url);
 
         if let Some(params) = &req.params {
@@ -272,6 +307,12 @@ impl LuaFeed {
 
         let status = response.status().as_u16();
         let url = response.url().to_string();
+        tracing::debug!(
+            feed_id = %self.meta.id,
+            status,
+            url = %url,
+            "received HTTP response"
+        );
 
         let headers: HashMap<String, String> = response
             .headers()

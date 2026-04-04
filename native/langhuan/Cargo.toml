@@ -18,7 +18,7 @@ mlua = { version = "0.11", features = [
     "serde",
     "macros",
 ] }
-reqwest = { version = "0.13", features = ["query"] }
+reqwest = { version = "0.13", features = ["query", "gzip", "deflate", "brotli"] }
 bytes = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -29,6 +29,7 @@ tokio-stream = "0.1"
 async-stream = "0.3"
 scraper = { version = "0.26", features = ["atomic"] }
 ego-tree = "0.11"
+tracing = "0.1"
 
 [dev-dependencies]
 tempfile = "3"

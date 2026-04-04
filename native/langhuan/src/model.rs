@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::fmt;
+use std::str::FromStr;
 
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
@@ -125,6 +127,49 @@ pub struct HttpRequest {
 #[derive(Debug, Clone)]
 pub struct HttpBody(pub Bytes);
 
+impl HttpBody {
+    /// Construct an [`HttpBody`] from a UTF-8 [`String`].
+    pub fn from_string(s: String) -> Self {
+        Self(Bytes::from(s))
+    }
+
+    /// Decode this body as UTF-8 text.
+    ///
+    /// Returns an error if the body contains invalid UTF-8.
+    pub fn as_str(&self) -> std::result::Result<&str, std::str::Utf8Error> {
+        std::str::from_utf8(&self.0)
+    }
+}
+
+impl From<String> for HttpBody {
+    fn from(value: String) -> Self {
+        Self::from_string(value)
+    }
+}
+
+impl From<&str> for HttpBody {
+    fn from(value: &str) -> Self {
+        Self(Bytes::copy_from_slice(value.as_bytes()))
+    }
+}
+
+impl fmt::Display for HttpBody {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.as_str() {
+            Ok(s) => f.write_str(s),
+            Err(_) => Err(fmt::Error),
+        }
+    }
+}
+
+impl FromStr for HttpBody {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(Self::from(s))
+    }
+}
+
 impl serde::Serialize for HttpBody {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -182,4 +227,28 @@ pub struct HttpResponse {
     pub body: HttpBody,
     /// The final URL after any redirects.
     pub url: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HttpBody;
+
+    #[test]
+    fn http_body_to_string_roundtrip() {
+        let src = "hello 世界";
+        let body = HttpBody::from(src);
+        assert_eq!(body.to_string(), src);
+    }
+
+    #[test]
+    fn http_body_from_string_helper_works() {
+        let body = HttpBody::from_string("payload".to_owned());
+        assert_eq!(body.as_str().expect("valid utf-8"), "payload");
+    }
+
+    #[test]
+    fn http_body_from_str_works() {
+        let body: HttpBody = "abc".parse().expect("infallible parse should succeed");
+        assert_eq!(body.as_str().expect("valid utf-8"), "abc");
+    }
 }

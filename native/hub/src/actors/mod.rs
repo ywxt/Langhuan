@@ -18,14 +18,17 @@ use tokio::spawn;
 
 /// Creates and spawns the actors in the async system.
 pub async fn create_actors() {
+    tracing::debug!("creating locale actor");
     let locale_context = Context::new();
     let locale_addr = locale_context.address();
     let locale_actor = LocaleActor::new(locale_addr.clone());
     spawn(locale_context.run(locale_actor));
 
     let engine = ScriptEngine::new();
+    tracing::debug!("script engine initialized");
 
     // RegistryActor — owns the script registry and handles feed management.
+    tracing::debug!("creating registry actor");
     let registry_context = Context::new();
     let registry_addr = registry_context.address();
     let registry_actor = RegistryActor::new(registry_addr.clone(), engine);
@@ -33,8 +36,11 @@ pub async fn create_actors() {
 
     // StreamActor — handles feed content streaming, resolves feeds via
     // Handler<GetFeed> on the RegistryActor.
+    tracing::debug!("creating stream actor");
     let stream_context = Context::new();
     let stream_addr = stream_context.address();
     let stream_actor = StreamActor::new(stream_addr, registry_addr);
     spawn(stream_context.run(stream_actor));
+
+    tracing::info!("all actors spawned");
 }

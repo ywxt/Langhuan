@@ -240,16 +240,17 @@ fn emit_end(request_id: &str, outcome: FeedStreamOutcome) {
 }
 
 /// Generic stream driver shared by all three `run_*` functions.
-async fn run_stream<T, F>(
+async fn run_stream<T, F, S>(
     request_id: String,
     mut stream: langhuan::feed::FeedStream<'_, T>,
     mut emit_item: F,
 ) where
-    F: FnMut(T),
+    F: FnMut(T) -> S,
+    S: RustSignal,
 {
     while let Some(item) = stream.next().await {
         match item {
-            Ok(value) => emit_item(value),
+            Ok(value) => emit_item(value).send_signal_to_dart(),
             Err(e) => {
                 emit_end(
                     &request_id,
@@ -267,30 +268,24 @@ async fn run_stream<T, F>(
 
 async fn run_search(feed: Arc<LuaFeed>, req: SearchRequest) {
     let stream = feed.search(&req.keyword);
-    run_stream(req.request_id.clone(), stream, |result| {
-        SearchResultItem {
-            request_id: req.request_id.clone(),
-            id: result.id,
-            title: result.title,
-            author: result.author,
-            cover_url: result.cover_url,
-            description: result.description,
-        }
-        .send_signal_to_dart();
+    run_stream(req.request_id.clone(), stream, |result| SearchResultItem {
+        request_id: req.request_id.clone(),
+        id: result.id,
+        title: result.title,
+        author: result.author,
+        cover_url: result.cover_url,
+        description: result.description,
     })
     .await;
 }
 
 async fn run_chapters(feed: Arc<LuaFeed>, req: ChaptersRequest) {
     let stream = feed.chapters(&req.book_id);
-    run_stream(req.request_id.clone(), stream, |chapter| {
-        ChapterInfoItem {
-            request_id: req.request_id.clone(),
-            id: chapter.id,
-            title: chapter.title,
-            index: chapter.index,
-        }
-        .send_signal_to_dart();
+    run_stream(req.request_id.clone(), stream, |chapter| ChapterInfoItem {
+        request_id: req.request_id.clone(),
+        id: chapter.id,
+        title: chapter.title,
+        index: chapter.index,
     })
     .await;
 }
@@ -309,7 +304,6 @@ async fn run_chapter_content(feed: Arc<LuaFeed>, req: ChapterContentRequest) {
             request_id: req.request_id.clone(),
             paragraph: content,
         }
-        .send_signal_to_dart();
     })
     .await;
 }

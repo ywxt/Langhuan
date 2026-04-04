@@ -105,12 +105,6 @@ class FeedService {
   }) {
     final requestId = _nextId();
 
-    SearchRequest(
-      requestId: requestId,
-      feedId: feedId,
-      keyword: keyword,
-    ).sendSignalToRust();
-
     final stream = _buildStream<SearchResultModel>(
       requestId: requestId,
       itemStream: SearchResultItem.rustSignalStream
@@ -124,6 +118,13 @@ class FeedService {
               description: pack.message.description,
             ),
           ),
+      send: () {
+        SearchRequest(
+          requestId: requestId,
+          feedId: feedId,
+          keyword: keyword,
+        ).sendSignalToRust();
+      },
     );
 
     return (requestId: requestId, stream: stream);
@@ -140,12 +141,6 @@ class FeedService {
   }) {
     final requestId = _nextId();
 
-    ChaptersRequest(
-      requestId: requestId,
-      feedId: feedId,
-      bookId: bookId,
-    ).sendSignalToRust();
-
     final stream = _buildStream<ChapterInfoModel>(
       requestId: requestId,
       itemStream: ChapterInfoItem.rustSignalStream
@@ -157,6 +152,13 @@ class FeedService {
               index: pack.message.index,
             ),
           ),
+      send: () {
+        ChaptersRequest(
+          requestId: requestId,
+          feedId: feedId,
+          bookId: bookId,
+        ).sendSignalToRust();
+      },
     );
 
     return (requestId: requestId, stream: stream);
@@ -173,17 +175,18 @@ class FeedService {
   }) {
     final requestId = _nextId();
 
-    ChapterContentRequest(
-      requestId: requestId,
-      feedId: feedId,
-      chapterId: chapterId,
-    ).sendSignalToRust();
-
     final stream = _buildStream<ParagraphContent>(
       requestId: requestId,
       itemStream: ChapterParagraphItem.rustSignalStream
           .where((pack) => pack.message.requestId == requestId)
           .map((pack) => pack.message.paragraph),
+      send: () {
+        ChapterContentRequest(
+          requestId: requestId,
+          feedId: feedId,
+          chapterId: chapterId,
+        ).sendSignalToRust();
+      },
     );
 
     return (requestId: requestId, stream: stream);
@@ -212,9 +215,9 @@ class FeedService {
   ///
   /// Returns a [Future] that completes once Rust has finished loading.
   Future<ScriptDirectorySet> setScriptDirectory(String path) {
-    SetScriptDirectory(path: path).sendSignalToRust();
-    return ScriptDirectorySet.rustSignalStream.first.then(
-      (pack) => pack.message,
+    return _subscribeAndSendNext(
+      responseStream: ScriptDirectorySet.rustSignalStream,
+      send: () => SetScriptDirectory(path: path).sendSignalToRust(),
     );
   }
 
@@ -224,11 +227,11 @@ class FeedService {
   /// responds.
   Future<FeedListResult> listFeeds() {
     final requestId = _nextId();
-    ListFeedsRequest(requestId: requestId).sendSignalToRust();
-    return FeedListResult.rustSignalStream
-        .where((pack) => pack.message.requestId == requestId)
-        .first
-        .then((pack) => pack.message);
+    return _subscribeAndSend(
+      responseStream: FeedListResult.rustSignalStream,
+      matches: (message) => message.requestId == requestId,
+      send: () => ListFeedsRequest(requestId: requestId).sendSignalToRust(),
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -242,8 +245,11 @@ class FeedService {
   /// failure.
   Future<FeedPreviewModel> previewFromUrl(String url) async {
     final requestId = _nextId();
-    PreviewFeedFromUrl(requestId: requestId, url: url).sendSignalToRust();
-    return _awaitPreview(requestId);
+    return _awaitPreview(
+      requestId,
+      () =>
+          PreviewFeedFromUrl(requestId: requestId, url: url).sendSignalToRust(),
+    );
   }
 
   /// Request a preview of a feed script from a local file [path].
@@ -251,8 +257,13 @@ class FeedService {
   /// [FeedPreviewModel].  Throws a [FeedPreviewException] on failure.
   Future<FeedPreviewModel> previewFromFile(String path) async {
     final requestId = _nextId();
-    PreviewFeedFromFile(requestId: requestId, path: path).sendSignalToRust();
-    return _awaitPreview(requestId);
+    return _awaitPreview(
+      requestId,
+      () => PreviewFeedFromFile(
+        requestId: requestId,
+        path: path,
+      ).sendSignalToRust(),
+    );
   }
 
   /// Confirm installation of a previously previewed feed.
@@ -261,11 +272,11 @@ class FeedService {
   /// Returns a [Future] that resolves to the [FeedInstallResult] once Rust
   /// finishes writing the script to disk and updating the current registry.
   Future<FeedInstallResult> installFeed(String requestId) {
-    InstallFeedRequest(requestId: requestId).sendSignalToRust();
-    return FeedInstallResult.rustSignalStream
-        .where((pack) => pack.message.requestId == requestId)
-        .first
-        .then((pack) => pack.message);
+    return _subscribeAndSend(
+      responseStream: FeedInstallResult.rustSignalStream,
+      matches: (message) => message.requestId == requestId,
+      send: () => InstallFeedRequest(requestId: requestId).sendSignalToRust(),
+    );
   }
 
   /// Remove an installed feed by [feedId].
@@ -273,35 +284,42 @@ class FeedService {
   /// Returns a [Future] that resolves to [FeedRemoveResult] when Rust finishes.
   Future<FeedRemoveResult> removeFeed(String feedId) {
     final requestId = _nextId();
-    RemoveFeedRequest(requestId: requestId, feedId: feedId).sendSignalToRust();
-    return FeedRemoveResult.rustSignalStream
-        .where((pack) => pack.message.requestId == requestId)
-        .first
-        .then((pack) => pack.message);
+    return _subscribeAndSend(
+      responseStream: FeedRemoveResult.rustSignalStream,
+      matches: (message) => message.requestId == requestId,
+      send: () => RemoveFeedRequest(
+        requestId: requestId,
+        feedId: feedId,
+      ).sendSignalToRust(),
+    );
   }
 
-  Future<FeedPreviewModel> _awaitPreview(String requestId) {
-    return FeedPreviewResult.rustSignalStream
-        .where((pack) => pack.message.requestId == requestId)
-        .first
-        .then((pack) {
-          final outcome = pack.message.outcome;
-          if (outcome is FeedPreviewOutcomeError) {
-            throw FeedPreviewException(message: outcome.message);
-          }
-          final success = outcome as FeedPreviewOutcomeSuccess;
-          return FeedPreviewModel(
-            requestId: pack.message.requestId,
-            id: success.id,
-            name: success.name,
-            version: success.version,
-            author: success.author,
-            description: success.description,
-            baseUrl: success.baseUrl,
-            allowedDomains: List.unmodifiable(success.allowedDomains),
-            currentVersion: success.currentVersion,
-          );
-        });
+  Future<FeedPreviewModel> _awaitPreview(
+    String requestId,
+    void Function() send,
+  ) {
+    return _subscribeAndSend(
+      responseStream: FeedPreviewResult.rustSignalStream,
+      matches: (message) => message.requestId == requestId,
+      send: send,
+    ).then((message) {
+      final outcome = message.outcome;
+      if (outcome is FeedPreviewOutcomeError) {
+        throw FeedPreviewException(message: outcome.message);
+      }
+      final success = outcome as FeedPreviewOutcomeSuccess;
+      return FeedPreviewModel(
+        requestId: message.requestId,
+        id: success.id,
+        name: success.name,
+        version: success.version,
+        author: success.author,
+        description: success.description,
+        baseUrl: success.baseUrl,
+        allowedDomains: List.unmodifiable(success.allowedDomains),
+        currentVersion: success.currentVersion,
+      );
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -315,6 +333,7 @@ class FeedService {
   Stream<T> _buildStream<T>({
     required String requestId,
     required Stream<T> itemStream,
+    required void Function() send,
   }) {
     late StreamController<T> controller;
     StreamSubscription<T>? itemSub;
@@ -345,6 +364,8 @@ class FeedService {
               // Close regardless of outcome (completed / cancelled / failed).
               controller.close();
             });
+
+        send();
       },
       onCancel: () {
         itemSub?.cancel();
@@ -355,6 +376,28 @@ class FeedService {
     );
 
     return controller.stream;
+  }
+
+  Future<T> _subscribeAndSend<T>({
+    required Stream<RustSignalPack<T>> responseStream,
+    required bool Function(T message) matches,
+    required void Function() send,
+  }) {
+    final future = responseStream
+        .where((pack) => matches(pack.message))
+        .first
+        .then((pack) => pack.message);
+    send();
+    return future;
+  }
+
+  Future<T> _subscribeAndSendNext<T>({
+    required Stream<RustSignalPack<T>> responseStream,
+    required void Function() send,
+  }) {
+    final future = responseStream.first.then((pack) => pack.message);
+    send();
+    return future;
   }
 }
 

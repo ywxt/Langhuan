@@ -31,7 +31,8 @@ impl Actor for LocaleActor {}
 
 #[async_trait]
 impl Notifiable<SetLocale> for LocaleActor {
-    async fn notify(&mut self, _message: SetLocale, _: &Context<Self>) {
-        rust_i18n::set_locale(&_message.locale);
+    async fn notify(&mut self, message: SetLocale, _: &Context<Self>) {
+        tracing::debug!(locale = %message.locale, "locale updated from Dart signal");
+        rust_i18n::set_locale(&message.locale);
     }
 }
