@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::bookshelf::models::BookshelfEntry;
-use crate::error::{Error, Result};
+use crate::error::{Error, FormatKind, FormatOperation, Result, StorageKind, StorageOperation};
 use crate::util::fs::write_atomic;
 
 pub const BOOKSHELF_SCHEMA_VERSION: u32 = 1;
@@ -48,9 +48,15 @@ impl TomlBookshelfStore {
 
         let content = tokio::fs::read_to_string(&self.path)
             .await
-            .map_err(|e| Error::BookshelfStorage(e.to_string()))?;
+            .map_err(|e| Error::Storage {
+                kind: StorageKind::Bookshelf,
+                operation: StorageOperation::Read,
+                message: e.to_string(),
+            })?;
 
-        let parsed = toml::from_str(&content).map_err(|e| Error::BookshelfParse {
+        let parsed = toml::from_str(&content).map_err(|e| Error::Format {
+            kind: FormatKind::Bookshelf,
+            operation: FormatOperation::Deserialize,
             message: e.to_string(),
         })?;
         tracing::debug!(path = %self.path.display(), "bookshelf file loaded");
@@ -66,14 +72,26 @@ impl TomlBookshelfStore {
         if let Some(parent) = self.path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
-                .map_err(|e| Error::BookshelfStorage(e.to_string()))?;
+                .map_err(|e| Error::Storage {
+                    kind: StorageKind::Bookshelf,
+                    operation: StorageOperation::CreateDir,
+                    message: e.to_string(),
+                })?;
         }
 
         let content = toml::to_string_pretty(file)
-            .map_err(|e| Error::BookshelfStorage(e.to_string()))?;
+            .map_err(|e| Error::Format {
+                kind: FormatKind::Bookshelf,
+                operation: FormatOperation::Serialize,
+                message: e.to_string(),
+            })?;
         write_atomic(&self.path, &content)
             .await
-            .map_err(|e| Error::BookshelfStorage(e.to_string()))?;
+            .map_err(|e| Error::Storage {
+                kind: StorageKind::Bookshelf,
+                operation: StorageOperation::Write,
+                message: e.to_string(),
+            })?;
         tracing::debug!(path = %self.path.display(), "bookshelf file saved");
         Ok(())
     }
@@ -104,7 +122,7 @@ mod tests {
 
         let store = TomlBookshelfStore::new(path);
         let err = store.load().await.expect_err("expected parse error");
-        assert!(matches!(err, Error::BookshelfParse { .. }));
+        assert!(matches!(err, Error::Format { kind: FormatKind::Bookshelf, operation: FormatOperation::Deserialize, .. }));
     }
 
     #[tokio::test]

@@ -32,12 +32,57 @@ error.domain_not_allowed:
 error.registry_write:
   en: "Failed to write registry: %{error}"
   zh: "寫入書源目錄失敗：%{error}"
-error.bookshelf_storage:
-  en: "Failed to access bookshelf storage: %{error}"
-  zh: "訪問書架存儲失敗：%{error}"
-error.bookshelf_parse:
-  en: "Bookshelf parse error: %{message}"
-  zh: "書架解析錯誤：%{message}"
+error.storage:
+  en: "Failed to %{operation} %{target}: %{message}"
+  zh: "%{target}%{operation}失敗：%{message}"
+error.format:
+  en: "Failed to %{operation} %{target}: %{message}"
+  zh: "%{target}%{operation}失敗：%{message}"
+error.cache_schema_mismatch:
+  en: "Chapter cache schema mismatch for %{feed_id}/%{book_id}/%{chapter_id}: cached=%{cached_version}, expected=%{expected_version}"
+  zh: "章節緩存版本不匹配：%{feed_id}/%{book_id}/%{chapter_id}，緩存版本 %{cached_version}，期望版本 %{expected_version}"
+error.cache_key_mismatch:
+  en: "Chapter cache key mismatch for %{expected_feed_id}/%{expected_book_id}/%{expected_chapter_id}: found %{actual_feed_id}/%{actual_book_id}/%{actual_chapter_id}"
+  zh: "章節緩存鍵不匹配：期望 %{expected_feed_id}/%{expected_book_id}/%{expected_chapter_id}，實際為 %{actual_feed_id}/%{actual_book_id}/%{actual_chapter_id}"
+error_target.bookshelf:
+  en: "bookshelf storage"
+  zh: "書架存儲"
+error_target.reading_progress:
+  en: "reading progress storage"
+  zh: "閱讀進度存儲"
+error_target.chapter_cache:
+  en: "chapter cache"
+  zh: "章節緩存"
+error_target.bookshelf_file:
+  en: "bookshelf file"
+  zh: "書架文件"
+error_target.reading_progress_file:
+  en: "reading progress file"
+  zh: "閱讀進度文件"
+error_target.chapter_cache_file:
+  en: "chapter cache file"
+  zh: "章節緩存文件"
+error_operation.read:
+  en: "read"
+  zh: "讀取"
+error_operation.write:
+  en: "write"
+  zh: "寫入"
+error_operation.create_dir:
+  en: "create directory for"
+  zh: "創建目錄"
+error_operation.remove_file:
+  en: "remove file from"
+  zh: "刪除文件"
+error_operation.remove_dir:
+  en: "remove directory for"
+  zh: "刪除目錄"
+error_operation.serialize:
+  en: "serialize"
+  zh: "序列化"
+error_operation.deserialize:
+  en: "deserialize"
+  zh: "反序列化"
 error.file_read:
   en: "Failed to read file: %{error}"
   zh: "無法讀取文件：%{error}"

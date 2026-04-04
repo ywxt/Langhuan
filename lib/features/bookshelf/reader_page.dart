@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
@@ -27,17 +28,79 @@ class ReaderPage extends ConsumerStatefulWidget {
 
 class _ReaderPageState extends ConsumerState<ReaderPage> {
   static const double _swipeVelocityThreshold = 220;
+  static const Duration _progressSaveDebounce = Duration(seconds: 1);
+
   String? _currentChapterId;
   bool _isSwitchingChapter = false;
+  bool _restoredScroll = false;
+  late final ScrollController _scrollController;
+  Timer? _saveTimer;
 
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController()..addListener(_onScroll);
     _currentChapterId = widget.chapterId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _ensureLoaded();
     });
+  }
+
+  @override
+  void dispose() {
+    _saveTimer?.cancel();
+    unawaited(_saveReadingProgress());
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    _saveTimer?.cancel();
+    _saveTimer = Timer(_progressSaveDebounce, () {
+      if (!mounted) return;
+      unawaited(_saveReadingProgress());
+    });
+  }
+
+  int _estimateParagraphIndex(int totalItems) {
+    if (!_scrollController.hasClients || totalItems <= 1) {
+      return 0;
+    }
+
+    final maxExtent = _scrollController.position.maxScrollExtent;
+    if (maxExtent <= 0) {
+      return 0;
+    }
+
+    final ratio = (_scrollController.offset / maxExtent).clamp(0.0, 1.0);
+    return (ratio * (totalItems - 1)).round();
+  }
+
+  Future<void> _saveReadingProgress() async {
+    final chapterId = _currentChapterId;
+    if (chapterId == null || chapterId.isEmpty) {
+      return;
+    }
+
+    final items = ref.read(chapterContentProvider).items;
+    final paragraphIndex = _estimateParagraphIndex(items.length);
+    final scrollOffset = _scrollController.hasClients
+        ? _scrollController.offset
+        : 0.0;
+
+    await ref
+        .read(readingProgressProvider.notifier)
+        .save(
+          feedId: widget.feedId,
+          bookId: widget.bookId,
+          chapterId: chapterId,
+          paragraphIndex: paragraphIndex,
+          scrollOffset: scrollOffset,
+        );
   }
 
   Future<void> _ensureLoaded() async {
@@ -54,6 +117,15 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
           .load(feedId: widget.feedId, bookId: widget.bookId);
     }
 
+    await ref
+        .read(readingProgressProvider.notifier)
+        .load(feedId: widget.feedId, bookId: widget.bookId);
+
+    final progress = ref.read(readingProgressProvider).progress;
+    if (progress != null && progress.chapterId.isNotEmpty) {
+      _currentChapterId = progress.chapterId;
+    }
+
     final chapterId = _currentChapterId;
     if (chapterId == null || chapterId.isEmpty) {
       return;
@@ -61,7 +133,23 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
     await ref
         .read(chapterContentProvider.notifier)
-        .load(feedId: widget.feedId, chapterId: chapterId);
+        .load(
+          feedId: widget.feedId,
+          bookId: widget.bookId,
+          chapterId: chapterId,
+        );
+
+    if (!_restoredScroll &&
+        progress != null &&
+        progress.chapterId == chapterId) {
+      _restoredScroll = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) return;
+        final maxExtent = _scrollController.position.maxScrollExtent;
+        final target = progress.scrollOffset.clamp(0.0, maxExtent);
+        _scrollController.jumpTo(target);
+      });
+    }
   }
 
   int _currentChapterIndex(List<ChapterInfoModel> chapters) {
@@ -97,6 +185,10 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     }
 
     final target = chapters[targetIndex];
+
+    await _saveReadingProgress();
+    _restoredScroll = false;
+
     _isSwitchingChapter = true;
     setState(() {
       _currentChapterId = target.id;
@@ -104,7 +196,14 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     try {
       await ref
           .read(chapterContentProvider.notifier)
-          .load(feedId: widget.feedId, chapterId: target.id);
+          .load(
+            feedId: widget.feedId,
+            bookId: widget.bookId,
+            chapterId: target.id,
+          );
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(0);
+      }
     } finally {
       _isSwitchingChapter = false;
     }
@@ -242,9 +341,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
       body = ErrorState(
         title: l10n.readerLoadError,
         message: contentState.error.toString(),
-        onRetry: () => ref
-            .read(chapterContentProvider.notifier)
-            .retry(feedId: widget.feedId),
+        onRetry: () => ref.read(chapterContentProvider.notifier).retry(),
         retryLabel: l10n.bookDetailRetry,
       );
     } else if (contentState.items.isEmpty) {
@@ -255,6 +352,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     } else {
       final paragraphWidgets = _buildParagraphs(context, contentState.items);
       body = ListView.builder(
+        controller: _scrollController,
         padding: const EdgeInsets.fromLTRB(
           LanghuanTheme.spaceLg,
           LanghuanTheme.spaceLg,

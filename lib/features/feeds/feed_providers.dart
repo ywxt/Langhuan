@@ -277,6 +277,8 @@ class BookInfoNotifier extends Notifier<BookInfoState> {
 
 class ChapterContentState {
   const ChapterContentState({
+    this.feedId = '',
+    this.bookId = '',
     this.chapterId = '',
     this.items = const [],
     this.isLoading = false,
@@ -284,6 +286,8 @@ class ChapterContentState {
     this.requestId,
   });
 
+  final String feedId;
+  final String bookId;
   final String chapterId;
   final List<ParagraphContent> items;
   final bool isLoading;
@@ -297,6 +301,8 @@ class ChapterContentState {
       .toList(growable: false);
 
   ChapterContentState copyWith({
+    String? feedId,
+    String? bookId,
     String? chapterId,
     List<ParagraphContent>? items,
     bool? isLoading,
@@ -304,6 +310,8 @@ class ChapterContentState {
     String? Function()? requestId,
   }) {
     return ChapterContentState(
+      feedId: feedId ?? this.feedId,
+      bookId: bookId ?? this.bookId,
       chapterId: chapterId ?? this.chapterId,
       items: items ?? this.items,
       isLoading: isLoading ?? this.isLoading,
@@ -319,13 +327,23 @@ class ChapterContentNotifier extends Notifier<ChapterContentState> {
   @override
   ChapterContentState build() => const ChapterContentState();
 
-  Future<void> load({required String feedId, required String chapterId}) async {
+  Future<void> load({
+    required String feedId,
+    required String bookId,
+    required String chapterId,
+  }) async {
     await _cancelCurrent();
 
-    state = ChapterContentState(chapterId: chapterId, isLoading: true);
+    state = ChapterContentState(
+      feedId: feedId,
+      bookId: bookId,
+      chapterId: chapterId,
+      isLoading: true,
+    );
 
     final (:requestId, :stream) = FeedService.instance.chapterContent(
       feedId: feedId,
+      bookId: bookId,
       chapterId: chapterId,
     );
 
@@ -350,9 +368,17 @@ class ChapterContentNotifier extends Notifier<ChapterContentState> {
 
   Future<void> cancel() async => _cancelCurrent();
 
-  Future<void> retry({required String feedId}) async {
-    if (state.chapterId.isEmpty) return;
-    await load(feedId: feedId, chapterId: state.chapterId);
+  Future<void> retry() async {
+    if (state.feedId.isEmpty ||
+        state.bookId.isEmpty ||
+        state.chapterId.isEmpty) {
+      return;
+    }
+    await load(
+      feedId: state.feedId,
+      bookId: state.bookId,
+      chapterId: state.chapterId,
+    );
   }
 
   Future<void> _cancelCurrent() async {
@@ -664,6 +690,120 @@ class BookshelfNotifier extends Notifier<BookshelfState> {
 }
 
 // ---------------------------------------------------------------------------
+// Reading progress state
+// ---------------------------------------------------------------------------
+
+class ReadingProgressState {
+  const ReadingProgressState({
+    this.feedId = '',
+    this.bookId = '',
+    this.progress,
+    this.isLoading = false,
+    this.isSaving = false,
+    this.error,
+  });
+
+  final String feedId;
+  final String bookId;
+  final ReadingProgressModel? progress;
+  final bool isLoading;
+  final bool isSaving;
+  final Object? error;
+
+  ReadingProgressState copyWith({
+    String? feedId,
+    String? bookId,
+    ReadingProgressModel? Function()? progress,
+    bool? isLoading,
+    bool? isSaving,
+    Object? Function()? error,
+  }) {
+    return ReadingProgressState(
+      feedId: feedId ?? this.feedId,
+      bookId: bookId ?? this.bookId,
+      progress: progress != null ? progress() : this.progress,
+      isLoading: isLoading ?? this.isLoading,
+      isSaving: isSaving ?? this.isSaving,
+      error: error != null ? error() : this.error,
+    );
+  }
+}
+
+class ReadingProgressNotifier extends Notifier<ReadingProgressState> {
+  @override
+  ReadingProgressState build() => const ReadingProgressState();
+
+  Future<void> load({required String feedId, required String bookId}) async {
+    state = state.copyWith(
+      feedId: feedId,
+      bookId: bookId,
+      isLoading: true,
+      error: () => null,
+    );
+
+    try {
+      final progress = await FeedService.instance.getReadingProgress(
+        feedId: feedId,
+        bookId: bookId,
+      );
+      state = state.copyWith(
+        progress: () => progress,
+        isLoading: false,
+        error: () => null,
+      );
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: () => e);
+    }
+  }
+
+  Future<void> save({
+    required String feedId,
+    required String bookId,
+    required String chapterId,
+    required int paragraphIndex,
+    required double scrollOffset,
+    int? updatedAtMs,
+  }) async {
+    final timestamp = updatedAtMs ?? DateTime.now().millisecondsSinceEpoch;
+
+    state = state.copyWith(
+      feedId: feedId,
+      bookId: bookId,
+      isSaving: true,
+      error: () => null,
+    );
+
+    try {
+      await FeedService.instance.setReadingProgress(
+        feedId: feedId,
+        bookId: bookId,
+        chapterId: chapterId,
+        paragraphIndex: paragraphIndex,
+        scrollOffset: scrollOffset,
+        updatedAtMs: timestamp,
+      );
+
+      state = state.copyWith(
+        progress: () => ReadingProgressModel(
+          feedId: feedId,
+          bookId: bookId,
+          chapterId: chapterId,
+          paragraphIndex: paragraphIndex,
+          scrollOffset: scrollOffset,
+          updatedAtMs: timestamp,
+        ),
+        isSaving: false,
+        error: () => null,
+      );
+    } catch (e) {
+      state = state.copyWith(isSaving: false, error: () => e);
+    }
+  }
+
+  void clear() => state = const ReadingProgressState();
+}
+
+// ---------------------------------------------------------------------------
 // Providers
 // ---------------------------------------------------------------------------
 
@@ -691,6 +831,11 @@ final feedListProvider = NotifierProvider<FeedListNotifier, FeedListState>(
 final bookshelfProvider = NotifierProvider<BookshelfNotifier, BookshelfState>(
   BookshelfNotifier.new,
 );
+
+final readingProgressProvider =
+    NotifierProvider<ReadingProgressNotifier, ReadingProgressState>(
+      ReadingProgressNotifier.new,
+    );
 
 final bookshelfCapabilitiesProvider =
     FutureProvider.family<BookshelfCapabilitiesModel, String>((ref, feedId) {

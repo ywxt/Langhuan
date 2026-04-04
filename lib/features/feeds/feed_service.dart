@@ -115,6 +115,25 @@ class BookshelfCapabilitiesModel {
   final bool supportsBookshelf;
 }
 
+@immutable
+class ReadingProgressModel {
+  const ReadingProgressModel({
+    required this.feedId,
+    required this.bookId,
+    required this.chapterId,
+    required this.paragraphIndex,
+    required this.scrollOffset,
+    required this.updatedAtMs,
+  });
+
+  final String feedId;
+  final String bookId;
+  final String chapterId;
+  final int paragraphIndex;
+  final double scrollOffset;
+  final int updatedAtMs;
+}
+
 // ---------------------------------------------------------------------------
 // FeedService
 // ---------------------------------------------------------------------------
@@ -252,6 +271,7 @@ class FeedService {
   /// Start a chapter-content stream.
   ({String requestId, Stream<ParagraphContent> stream}) chapterContent({
     required String feedId,
+    required String bookId,
     required String chapterId,
   }) {
     final requestId = _nextId();
@@ -265,6 +285,7 @@ class FeedService {
         ChapterContentRequest(
           requestId: requestId,
           feedId: feedId,
+          bookId: bookId,
           chapterId: chapterId,
         ).sendSignalToRust();
       },
@@ -388,6 +409,75 @@ class FeedService {
         supportsBookshelf: message.supportsBookshelf,
       ),
     );
+  }
+
+  Future<ReadingProgressModel?> getReadingProgress({
+    required String feedId,
+    required String bookId,
+  }) {
+    final requestId = _nextId();
+    return _subscribeAndSend(
+      responseStream: ReadingProgressGetResult.rustSignalStream,
+      matches: (message) => message.requestId == requestId,
+      send: () {
+        ReadingProgressGetRequest(
+          requestId: requestId,
+          feedId: feedId,
+          bookId: bookId,
+        ).sendSignalToRust();
+      },
+    ).then((message) {
+      final outcome = message.outcome;
+      if (outcome is ReadingProgressGetOutcomeError) {
+        throw ReadingProgressException(message: outcome.message);
+      }
+
+      final success = outcome as ReadingProgressGetOutcomeSuccess;
+      final item = success.progress;
+      if (item == null) {
+        return null;
+      }
+
+      return ReadingProgressModel(
+        feedId: item.feedId,
+        bookId: item.bookId,
+        chapterId: item.chapterId,
+        paragraphIndex: item.paragraphIndex,
+        scrollOffset: item.scrollOffset,
+        updatedAtMs: item.updatedAtMs,
+      );
+    });
+  }
+
+  Future<void> setReadingProgress({
+    required String feedId,
+    required String bookId,
+    required String chapterId,
+    required int paragraphIndex,
+    required double scrollOffset,
+    required int updatedAtMs,
+  }) {
+    final requestId = _nextId();
+    return _subscribeAndSend(
+      responseStream: ReadingProgressSetResult.rustSignalStream,
+      matches: (message) => message.requestId == requestId,
+      send: () {
+        ReadingProgressSetRequest(
+          requestId: requestId,
+          feedId: feedId,
+          bookId: bookId,
+          chapterId: chapterId,
+          paragraphIndex: paragraphIndex,
+          scrollOffset: scrollOffset,
+          updatedAtMs: updatedAtMs,
+        ).sendSignalToRust();
+      },
+    ).then((message) {
+      final outcome = message.outcome;
+      if (outcome is ReadingProgressSetOutcomeError) {
+        throw ReadingProgressException(message: outcome.message);
+      }
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -645,4 +735,13 @@ class BookshelfOperationException implements Exception {
 
   @override
   String toString() => 'BookshelfOperationException: $message';
+}
+
+class ReadingProgressException implements Exception {
+  const ReadingProgressException({required this.message});
+
+  final String message;
+
+  @override
+  String toString() => 'ReadingProgressException: $message';
 }

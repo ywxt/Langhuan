@@ -1,4 +1,5 @@
 pub mod bookshelf;
+pub mod cache;
 pub mod error;
 pub mod feed;
 pub mod model;

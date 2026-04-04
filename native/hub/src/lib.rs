@@ -69,10 +69,101 @@ fn localize_error(e: &langhuan::error::Error) -> String {
         )
         .to_string(),
         Error::RegistryWrite(msg) => t!("error.registry_write", error = msg).to_string(),
-        Error::BookshelfStorage(msg) => t!("error.bookshelf_storage", error = msg).to_string(),
-        Error::BookshelfParse { message } => {
-            t!("error.bookshelf_parse", message = message).to_string()
-        }
+        Error::Storage {
+            kind,
+            operation,
+            message,
+        } => t!(
+            "error.storage",
+            target = localize_storage_kind(*kind),
+            operation = localize_storage_operation(*operation),
+            message = message
+        )
+        .to_string(),
+        Error::Format {
+            kind,
+            operation,
+            message,
+        } => t!(
+            "error.format",
+            target = localize_format_kind(*kind),
+            operation = localize_format_operation(*operation),
+            message = message
+        )
+        .to_string(),
+        Error::CacheSchemaMismatch {
+            feed_id,
+            book_id,
+            chapter_id,
+            cached_version,
+            expected_version,
+        } => t!(
+            "error.cache_schema_mismatch",
+            feed_id = feed_id,
+            book_id = book_id,
+            chapter_id = chapter_id,
+            cached_version = cached_version,
+            expected_version = expected_version
+        )
+        .to_string(),
+        Error::CacheKeyMismatch {
+            expected_feed_id,
+            expected_book_id,
+            expected_chapter_id,
+            actual_feed_id,
+            actual_book_id,
+            actual_chapter_id,
+        } => t!(
+            "error.cache_key_mismatch",
+            expected_feed_id = expected_feed_id,
+            expected_book_id = expected_book_id,
+            expected_chapter_id = expected_chapter_id,
+            actual_feed_id = actual_feed_id,
+            actual_book_id = actual_book_id,
+            actual_chapter_id = actual_chapter_id,
+        )
+        .to_string(),
+    }
+}
+
+fn localize_storage_kind(kind: langhuan::error::StorageKind) -> String {
+    use langhuan::error::StorageKind;
+
+    match kind {
+        StorageKind::Bookshelf => t!("error_target.bookshelf").to_string(),
+        StorageKind::ReadingProgress => t!("error_target.reading_progress").to_string(),
+        StorageKind::ChapterCache => t!("error_target.chapter_cache").to_string(),
+    }
+}
+
+fn localize_storage_operation(operation: langhuan::error::StorageOperation) -> String {
+    use langhuan::error::StorageOperation;
+
+    match operation {
+        StorageOperation::Read => t!("error_operation.read").to_string(),
+        StorageOperation::Write => t!("error_operation.write").to_string(),
+        StorageOperation::CreateDir => t!("error_operation.create_dir").to_string(),
+        StorageOperation::RemoveFile => t!("error_operation.remove_file").to_string(),
+        StorageOperation::RemoveDir => t!("error_operation.remove_dir").to_string(),
+    }
+}
+
+fn localize_format_kind(kind: langhuan::error::FormatKind) -> String {
+    use langhuan::error::FormatKind;
+
+    match kind {
+        FormatKind::Bookshelf => t!("error_target.bookshelf_file").to_string(),
+        FormatKind::ReadingProgress => t!("error_target.reading_progress_file").to_string(),
+        FormatKind::ChapterCache => t!("error_target.chapter_cache_file").to_string(),
+    }
+}
+
+fn localize_format_operation(operation: langhuan::error::FormatOperation) -> String {
+    use langhuan::error::FormatOperation;
+
+    match operation {
+        FormatOperation::Serialize => t!("error_operation.serialize").to_string(),
+        FormatOperation::Deserialize => t!("error_operation.deserialize").to_string(),
     }
 }
 

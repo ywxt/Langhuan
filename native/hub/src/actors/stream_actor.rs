@@ -16,6 +16,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use langhuan::cache::CachedFeed;
 use langhuan::feed::Feed;
 use langhuan::script::lua::LuaFeed;
 use messages::prelude::{Actor, Address, Context, Notifiable};
@@ -145,7 +146,10 @@ impl StreamActor {
 
     /// Resolve a pre-compiled [`LuaFeed`] by sending a [`GetFeed`] message to
     /// the [`RegistryActor`].
-    async fn resolve_feed_result(&mut self, feed_id: &str) -> Result<Arc<LuaFeed>, String> {
+    async fn resolve_feed_result(
+        &mut self,
+        feed_id: &str,
+    ) -> Result<Arc<CachedFeed<LuaFeed>>, String> {
         let result = self
             .registry_addr
             .send(GetFeed {
@@ -162,7 +166,10 @@ impl StreamActor {
 
     /// Resolve a pre-compiled [`LuaFeed`] by sending a [`GetFeed`] message to
     /// the [`RegistryActor`].
-    async fn resolve_feed(&mut self, feed_id: &str) -> Result<Arc<LuaFeed>, FeedStreamOutcome> {
+    async fn resolve_feed(
+        &mut self,
+        feed_id: &str,
+    ) -> Result<Arc<CachedFeed<LuaFeed>>, FeedStreamOutcome> {
         self.resolve_feed_result(feed_id)
             .await
             .map_err(|message| FeedStreamOutcome::Failed {
@@ -294,7 +301,7 @@ async fn run_stream<T, F, S>(
     emit_end(&request_id, FeedStreamOutcome::Completed);
 }
 
-async fn run_search(feed: Arc<LuaFeed>, req: SearchRequest) {
+async fn run_search(feed: Arc<CachedFeed<LuaFeed>>, req: SearchRequest) {
     let stream = feed.search(&req.keyword);
     run_stream(req.request_id.clone(), stream, |result| SearchResultItem {
         request_id: req.request_id.clone(),
@@ -307,7 +314,7 @@ async fn run_search(feed: Arc<LuaFeed>, req: SearchRequest) {
     .await;
 }
 
-async fn run_chapters(feed: Arc<LuaFeed>, req: ChaptersRequest) {
+async fn run_chapters(feed: Arc<CachedFeed<LuaFeed>>, req: ChaptersRequest) {
     let stream = feed.chapters(&req.book_id);
     run_stream(req.request_id.clone(), stream, |chapter| ChapterInfoItem {
         request_id: req.request_id.clone(),
@@ -318,10 +325,10 @@ async fn run_chapters(feed: Arc<LuaFeed>, req: ChaptersRequest) {
     .await;
 }
 
-async fn run_chapter_content(feed: Arc<LuaFeed>, req: ChapterContentRequest) {
+async fn run_chapter_content(feed: Arc<CachedFeed<LuaFeed>>, req: ChapterContentRequest) {
     use langhuan::model::Paragraph;
 
-    let stream = feed.paragraphs(&req.chapter_id);
+    let stream = feed.paragraphs(&req.book_id, &req.chapter_id);
     run_stream(req.request_id.clone(), stream, |paragraph| {
         let content = match paragraph {
             Paragraph::Title { text } => ParagraphContent::Title { text },
@@ -336,7 +343,7 @@ async fn run_chapter_content(feed: Arc<LuaFeed>, req: ChapterContentRequest) {
     .await;
 }
 
-async fn run_book_info(feed: &LuaFeed, req: BookInfoRequest) -> BookInfoResult {
+async fn run_book_info(feed: &CachedFeed<LuaFeed>, req: BookInfoRequest) -> BookInfoResult {
     let outcome = match feed.book_info(&req.book_id).await {
         Ok(info) => BookInfoOutcome::Success {
             id: info.id,

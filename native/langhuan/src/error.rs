@@ -1,5 +1,34 @@
 use std::collections::HashSet;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageKind {
+    Bookshelf,
+    ReadingProgress,
+    ChapterCache,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageOperation {
+    Read,
+    Write,
+    CreateDir,
+    RemoveFile,
+    RemoveDir,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FormatKind {
+    Bookshelf,
+    ReadingProgress,
+    ChapterCache,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FormatOperation {
+    Serialize,
+    Deserialize,
+}
+
 /// Errors that can occur in the langhuan feed engine.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -73,15 +102,45 @@ pub enum Error {
     #[error("registry write error: {0}")]
     RegistryWrite(String),
 
-    /// A read/write operation for local bookshelf storage failed.
-    #[error("bookshelf storage error: {0}")]
-    BookshelfStorage(String),
-
-    /// The local bookshelf TOML file could not be parsed.
-    #[error("bookshelf parse error: {message}")]
-    BookshelfParse {
-        /// A description of the parse error.
+    /// A local storage operation failed.
+    #[error("storage error in {kind:?} during {operation:?}: {message}")]
+    Storage {
+        kind: StorageKind,
+        operation: StorageOperation,
         message: String,
+    },
+
+    /// Serializing or deserializing a TOML-backed data file failed.
+    #[error("format error in {kind:?} during {operation:?}: {message}")]
+    Format {
+        kind: FormatKind,
+        operation: FormatOperation,
+        message: String,
+    },
+
+    /// The chapter cache file schema version does not match the current code.
+    #[error(
+        "chapter cache schema mismatch for {feed_id}/{book_id}/{chapter_id}: cached={cached_version}, expected={expected_version}"
+    )]
+    CacheSchemaMismatch {
+        feed_id: String,
+        book_id: String,
+        chapter_id: String,
+        cached_version: u32,
+        expected_version: u32,
+    },
+
+    /// The content of a chapter cache file does not match the expected key.
+    #[error(
+        "chapter cache key mismatch for {expected_feed_id}/{expected_book_id}/{expected_chapter_id}: found {actual_feed_id}/{actual_book_id}/{actual_chapter_id}"
+    )]
+    CacheKeyMismatch {
+        expected_feed_id: String,
+        expected_book_id: String,
+        expected_chapter_id: String,
+        actual_feed_id: String,
+        actual_book_id: String,
+        actual_chapter_id: String,
     },
 }
 
@@ -114,8 +173,10 @@ impl Error {
             | Error::DuplicateFeedId { .. }
             | Error::DomainNotAllowed { .. }
             | Error::RegistryWrite(_)
-            | Error::BookshelfStorage(_)
-            | Error::BookshelfParse { .. } => false,
+            | Error::Storage { .. }
+            | Error::Format { .. }
+            | Error::CacheSchemaMismatch { .. }
+            | Error::CacheKeyMismatch { .. } => false,
         }
     }
 }

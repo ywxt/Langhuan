@@ -142,21 +142,21 @@ impl LuaFeed {
         Ok(page)
     }
 
-    /// Execute a full request/parse cycle for paginated results, with
-    /// exponential-backoff retry on transient errors.
-    ///
-    /// Retries up to [`MAX_RETRIES`] times.  Non-retryable errors are returned
-    /// immediately without retrying.
-    async fn execute_paged_cycle_with_retry<T: DeserializeOwned>(
+    /// Execute a full request/parse cycle with exponential-backoff retry,
+    /// where request arguments are produced dynamically for each retry.
+    async fn execute_paged_cycle_with_retry_by<T, A, F>(
         &self,
         pair: &HandlerPair,
-        keyword: &str,
-        cursor: &Value,
-    ) -> Result<Page<T, Value>> {
+        mut make_args: F,
+    ) -> Result<Page<T, Value>>
+    where
+        T: DeserializeOwned,
+        A: mlua::IntoLuaMulti + Send,
+        F: FnMut() -> A,
+    {
         let mut attempt = 0u32;
         loop {
-            let args = (keyword, cursor.clone());
-            match self.execute_paged_cycle(pair, args).await {
+            match self.execute_paged_cycle(pair, make_args()).await {
                 Ok(page) => {
                     if attempt > 0 {
                         tracing::info!(
@@ -224,20 +224,25 @@ impl LuaFeed {
     /// Build a [`FeedStream`] that automatically follows pagination cursors,
     /// yielding individual items one by one.
     ///
-    /// `key` is the primary argument passed to the Lua `request` function
-    /// (e.g. a search keyword or a book ID).  The cursor starts as `Nil` and
-    /// is updated from each page's `next_cursor` field.
-    ///
-    /// Each page fetch is retried with exponential backoff on transient errors.
-    /// A permanent error terminates the stream immediately.
-    fn paged_stream<'a, T>(&'a self, pair: &'a HandlerPair, key: &'a str) -> FeedStream<'a, T>
+    /// `make_args` receives the current cursor and returns the argument tuple
+    /// for the Lua `request` function.
+    fn paged_stream_by<'a, T, A, F>(
+        &'a self,
+        pair: &'a HandlerPair,
+        mut make_args: F,
+    ) -> FeedStream<'a, T>
     where
         T: DeserializeOwned + Send + 'a,
+        A: mlua::IntoLuaMulti + Send,
+        F: FnMut(&Value) -> A + Send + 'a,
     {
         Box::pin(stream! {
             let mut cursor = Value::Nil;
             loop {
-                match self.execute_paged_cycle_with_retry(pair, key, &cursor).await {
+                match self
+                    .execute_paged_cycle_with_retry_by(pair, || make_args(&cursor))
+                    .await
+                {
                     Ok(page) => {
                         let next = page.next_cursor;
                         for item in page.items {
@@ -384,7 +389,9 @@ impl IntoLua for HttpResponse {
 
 impl Feed for LuaFeed {
     fn search<'a>(&'a self, keyword: &'a str) -> FeedStream<'a, SearchResult> {
-        self.paged_stream(&self.handlers.search, keyword)
+        self.paged_stream_by(&self.handlers.search, move |cursor| {
+            (keyword, cursor.clone())
+        })
     }
 
     async fn book_info(&self, id: &str) -> Result<BookInfo> {
@@ -392,11 +399,19 @@ impl Feed for LuaFeed {
     }
 
     fn chapters<'a>(&'a self, book_id: &'a str) -> FeedStream<'a, ChapterInfo> {
-        self.paged_stream(&self.handlers.chapters, book_id)
+        self.paged_stream_by(&self.handlers.chapters, move |cursor| {
+            (book_id, cursor.clone())
+        })
     }
 
-    fn paragraphs<'a>(&'a self, chapter_id: &'a str) -> FeedStream<'a, Paragraph> {
-        self.paged_stream(&self.handlers.paragraphs, chapter_id)
+    fn paragraphs<'a>(
+        &'a self,
+        book_id: &'a str,
+        chapter_id: &'a str,
+    ) -> FeedStream<'a, Paragraph> {
+        self.paged_stream_by(&self.handlers.paragraphs, move |cursor| {
+            (book_id, chapter_id, cursor.clone())
+        })
     }
 
     fn meta(&self) -> &FeedMeta {
@@ -485,7 +500,7 @@ return {
         parse   = function(resp) return { items = {}, next_cursor = nil } end,
     },
     paragraphs = {
-        request = function(chapter_id, cursor) return { url = meta.base_url .. "/content/" .. chapter_id } end,
+        request = function(book_id, chapter_id, cursor) return { url = meta.base_url .. "/content/" .. chapter_id } end,
         parse   = function(resp) return { items = {}, next_cursor = nil } end,
     },
 }
@@ -511,7 +526,7 @@ return {
         parse   = function(resp) return { items = {}, next_cursor = nil } end,
     },
     paragraphs = {
-        request = function(chapter_id, cursor) return { url = meta.base_url .. "/content/" .. chapter_id } end,
+        request = function(book_id, chapter_id, cursor) return { url = meta.base_url .. "/content/" .. chapter_id } end,
         parse   = function(resp) return { items = {}, next_cursor = nil } end,
     },
 }
@@ -556,7 +571,7 @@ return {
         parse   = function(resp) return { items = {}, next_cursor = nil } end,
     },
     paragraphs = {
-        request = function(chapter_id, cursor) return { url = meta.base_url .. "/content/" .. chapter_id } end,
+        request = function(book_id, chapter_id, cursor) return { url = meta.base_url .. "/content/" .. chapter_id } end,
         parse   = function(resp) return { items = {}, next_cursor = nil } end,
     },
 }
@@ -603,7 +618,7 @@ return {{
     }},
     book_info     = {{ request = function(id) return {{ url = meta.base_url }} end, parse = function(r) return {{}} end }},
     chapters      = {{ request = function(id, c) return {{ url = meta.base_url }} end, parse = function(r) return {{ items = {{}}, next_cursor = nil }} end }},
-    paragraphs = {{ request = function(id, c) return {{ url = meta.base_url }} end, parse = function(r) return {{ items = {{}}, next_cursor = nil }} end }},
+    paragraphs = {{ request = function(book_id, chapter_id, c) return {{ url = meta.base_url }} end, parse = function(r) return {{ items = {{}}, next_cursor = nil }} end }},
 }}
 "#,
             make_header(&server.url())

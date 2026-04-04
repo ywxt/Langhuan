@@ -15,10 +15,11 @@
 
 use std::collections::HashMap;
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use langhuan::cache::{CacheStore, CachedFeed};
 use langhuan::script::lua::LuaFeed;
 use langhuan::script::registry::ScriptRegistry;
 use langhuan::script::runtime::ScriptEngine;
@@ -30,7 +31,10 @@ use crate::localize_error;
 use crate::signals::{
     FeedInstallOutcome, FeedInstallResult, FeedListResult, FeedMetaItem, FeedPreviewOutcome,
     FeedPreviewResult, FeedRemoveOutcome, FeedRemoveResult, InstallFeedRequest, ListFeedsRequest,
-    PreviewFeedFromFile, PreviewFeedFromUrl, RemoveFeedRequest,
+    PreviewFeedFromFile, PreviewFeedFromUrl, ReadingProgressGetOutcome,
+    ReadingProgressGetRequest, ReadingProgressGetResult, ReadingProgressItem,
+    ReadingProgressSetOutcome, ReadingProgressSetRequest, ReadingProgressSetResult,
+    RemoveFeedRequest,
 };
 
 use super::app_data_actor::InitializeAppDataDirectory;
@@ -90,6 +94,8 @@ pub struct RegistryActor {
     /// The currently loaded script registry.  `None` until
     /// `do_set_directory` succeeds for the first time.
     registry: Option<ScriptRegistry>,
+    /// Shared cache store used by [`CachedFeed`] wrappers.
+    cache_store: Option<Arc<CacheStore>>,
     /// Per-feed compile errors keyed by `feed_id`.
     load_errors: HashMap<String, String>,
     /// Pending feed installs awaiting user confirmation, keyed by `request_id`.
@@ -109,10 +115,13 @@ impl RegistryActor {
         _owned_tasks.spawn(Self::listen_to_preview_from_url(self_addr.clone()));
         _owned_tasks.spawn(Self::listen_to_preview_from_file(self_addr.clone()));
         _owned_tasks.spawn(Self::listen_to_install(self_addr.clone()));
-        _owned_tasks.spawn(Self::listen_to_remove(self_addr));
+        _owned_tasks.spawn(Self::listen_to_remove(self_addr.clone()));
+        _owned_tasks.spawn(Self::listen_to_reading_progress_get(self_addr.clone()));
+        _owned_tasks.spawn(Self::listen_to_reading_progress_set(self_addr));
         Self {
             engine,
             registry: None,
+            cache_store: None,
             load_errors: HashMap::new(),
             pending_installs: HashMap::new(),
             _owned_tasks,
@@ -134,8 +143,12 @@ impl RegistryActor {
         }
         let base_dir = Path::new(path);
         let scripts_dir = scripts_dir(base_dir);
+        let cache_dir = cache_dir(base_dir);
 
         if let Err(e) = tokio::fs::create_dir_all(&scripts_dir).await {
+            return Err(e.to_string());
+        }
+        if let Err(e) = tokio::fs::create_dir_all(&cache_dir).await {
             return Err(e.to_string());
         }
 
@@ -179,6 +192,7 @@ impl RegistryActor {
         self.registry = Some(
             ScriptRegistry::new(&scripts_dir, entries, feeds).map_err(|e| localize_error(&e))?,
         );
+        self.cache_store = Some(Arc::new(CacheStore::new(cache_dir)));
         self.load_errors = load_errors;
 
         Ok(RegistryInitializationResult {
@@ -351,6 +365,79 @@ impl RegistryActor {
             },
         }
     }
+
+    async fn do_reading_progress_get(
+        &self,
+        req: ReadingProgressGetRequest,
+    ) -> ReadingProgressGetResult {
+        let Some(cache_store) = self.cache_store.as_ref() else {
+            return ReadingProgressGetResult {
+                request_id: req.request_id,
+                outcome: ReadingProgressGetOutcome::Error {
+                    message: t!("error.app_data_dir_not_set").to_string(),
+                },
+            };
+        };
+
+        let outcome = match cache_store
+            .get_reading_progress(&req.feed_id, &req.book_id)
+            .await
+        {
+            Ok(progress) => ReadingProgressGetOutcome::Success {
+                progress: progress.map(|item| ReadingProgressItem {
+                    feed_id: item.feed_id,
+                    book_id: item.book_id,
+                    chapter_id: item.chapter_id,
+                    paragraph_index: item.paragraph_index as u32,
+                    scroll_offset: item.scroll_offset,
+                    updated_at_ms: item.updated_at_ms,
+                }),
+            },
+            Err(e) => ReadingProgressGetOutcome::Error {
+                message: localize_error(&e),
+            },
+        };
+
+        ReadingProgressGetResult {
+            request_id: req.request_id,
+            outcome,
+        }
+    }
+
+    async fn do_reading_progress_set(
+        &self,
+        req: ReadingProgressSetRequest,
+    ) -> ReadingProgressSetResult {
+        let Some(cache_store) = self.cache_store.as_ref() else {
+            return ReadingProgressSetResult {
+                request_id: req.request_id,
+                outcome: ReadingProgressSetOutcome::Error {
+                    message: t!("error.app_data_dir_not_set").to_string(),
+                },
+            };
+        };
+
+        let progress = langhuan::cache::ReadingProgress {
+            feed_id: req.feed_id,
+            book_id: req.book_id,
+            chapter_id: req.chapter_id,
+            paragraph_index: req.paragraph_index as usize,
+            scroll_offset: req.scroll_offset,
+            updated_at_ms: req.updated_at_ms,
+        };
+
+        let outcome = match cache_store.set_reading_progress(progress).await {
+            Ok(()) => ReadingProgressSetOutcome::Success,
+            Err(e) => ReadingProgressSetOutcome::Error {
+                message: localize_error(&e),
+            },
+        };
+
+        ReadingProgressSetResult {
+            request_id: req.request_id,
+            outcome,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -359,13 +446,17 @@ impl RegistryActor {
 
 #[async_trait]
 impl Handler<GetFeed> for RegistryActor {
-    type Result = Result<Arc<LuaFeed>, ResolveError>;
+    type Result = Result<Arc<CachedFeed<LuaFeed>>, ResolveError>;
 
     async fn handle(&mut self, msg: GetFeed, _: &Context<Self>) -> Self::Result {
         let registry = self.registry.as_ref().ok_or(ResolveError::DirNotSet)?;
+        let cache_store = self.cache_store.as_ref().ok_or(ResolveError::DirNotSet)?;
 
         if let Some((_, feed)) = registry.feed(&msg.feed_id) {
-            return Ok(Arc::clone(feed));
+            return Ok(Arc::new(CachedFeed::new(
+                Arc::clone(feed),
+                Arc::clone(cache_store),
+            )));
         }
 
         if registry.has_entry(&msg.feed_id) {
@@ -374,6 +465,10 @@ impl Handler<GetFeed> for RegistryActor {
             Err(ResolveError::NotFound { id: msg.feed_id })
         }
     }
+}
+
+fn cache_dir(base_dir: &Path) -> PathBuf {
+    base_dir.join("cache")
 }
 
 // ---------------------------------------------------------------------------
@@ -424,6 +519,20 @@ impl Notifiable<RemoveFeedRequest> for RegistryActor {
     }
 }
 
+#[async_trait]
+impl Notifiable<ReadingProgressGetRequest> for RegistryActor {
+    async fn notify(&mut self, msg: ReadingProgressGetRequest, _: &Context<Self>) {
+        self.do_reading_progress_get(msg).await.send_signal_to_dart();
+    }
+}
+
+#[async_trait]
+impl Notifiable<ReadingProgressSetRequest> for RegistryActor {
+    async fn notify(&mut self, msg: ReadingProgressSetRequest, _: &Context<Self>) {
+        self.do_reading_progress_set(msg).await.send_signal_to_dart();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Dart signal listeners
 // ---------------------------------------------------------------------------
@@ -459,6 +568,20 @@ impl RegistryActor {
 
     async fn listen_to_remove(mut self_addr: Address<Self>) {
         let receiver = RemoveFeedRequest::get_dart_signal_receiver();
+        while let Some(signal_pack) = receiver.recv().await {
+            let _ = self_addr.notify(signal_pack.message).await;
+        }
+    }
+
+    async fn listen_to_reading_progress_get(mut self_addr: Address<Self>) {
+        let receiver = ReadingProgressGetRequest::get_dart_signal_receiver();
+        while let Some(signal_pack) = receiver.recv().await {
+            let _ = self_addr.notify(signal_pack.message).await;
+        }
+    }
+
+    async fn listen_to_reading_progress_set(mut self_addr: Address<Self>) {
+        let receiver = ReadingProgressSetRequest::get_dart_signal_receiver();
         while let Some(signal_pack) = receiver.recv().await {
             let _ = self_addr.notify(signal_pack.message).await;
         }
