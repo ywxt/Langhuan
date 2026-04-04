@@ -200,6 +200,78 @@ class ChaptersNotifier extends Notifier<ChaptersState> {
 }
 
 // ---------------------------------------------------------------------------
+// Book info state
+// ---------------------------------------------------------------------------
+
+class BookInfoState {
+  const BookInfoState({
+    this.feedId = '',
+    this.bookId = '',
+    this.book,
+    this.isLoading = false,
+    this.error,
+  });
+
+  final String feedId;
+  final String bookId;
+  final BookInfoModel? book;
+  final bool isLoading;
+  final Object? error;
+
+  bool get hasError => error != null;
+
+  BookInfoState copyWith({
+    String? feedId,
+    String? bookId,
+    BookInfoModel? Function()? book,
+    bool? isLoading,
+    Object? Function()? error,
+  }) {
+    return BookInfoState(
+      feedId: feedId ?? this.feedId,
+      bookId: bookId ?? this.bookId,
+      book: book != null ? book() : this.book,
+      isLoading: isLoading ?? this.isLoading,
+      error: error != null ? error() : this.error,
+    );
+  }
+}
+
+class BookInfoNotifier extends Notifier<BookInfoState> {
+  @override
+  BookInfoState build() => const BookInfoState();
+
+  Future<void> load({required String feedId, required String bookId}) async {
+    state = BookInfoState(feedId: feedId, bookId: bookId, isLoading: true);
+
+    try {
+      final book = await FeedService.instance.bookInfo(
+        feedId: feedId,
+        bookId: bookId,
+      );
+      state = state.copyWith(
+        book: () => book,
+        isLoading: false,
+        error: () => null,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: () => e,
+        book: () => null,
+      );
+    }
+  }
+
+  Future<void> retry() async {
+    if (state.feedId.isEmpty || state.bookId.isEmpty) return;
+    await load(feedId: state.feedId, bookId: state.bookId);
+  }
+
+  void clear() => state = const BookInfoState();
+}
+
+// ---------------------------------------------------------------------------
 // Chapter content state
 // ---------------------------------------------------------------------------
 
@@ -442,6 +514,10 @@ final searchProvider = NotifierProvider<SearchNotifier, SearchState>(
 
 final chaptersProvider = NotifierProvider<ChaptersNotifier, ChaptersState>(
   ChaptersNotifier.new,
+);
+
+final bookInfoProvider = NotifierProvider<BookInfoNotifier, BookInfoState>(
+  BookInfoNotifier.new,
 );
 
 final chapterContentProvider =

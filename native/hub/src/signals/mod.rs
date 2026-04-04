@@ -36,6 +36,13 @@ pub struct ChapterContentRequest {
     pub chapter_id: String,
 }
 
+/// Request detailed information for a single book.
+#[derive(Deserialize, DartSignal)]
+pub struct BookInfoRequest {
+    pub feed_id: String,
+    pub book_id: String,
+}
+
 /// Cancel an in-progress stream identified by `request_id`.
 /// Rust will stop emitting items and send a [`FeedStreamEnd`] with
 /// `status = "cancelled"`.
@@ -82,6 +89,28 @@ pub enum ParagraphContent {
 pub struct ChapterParagraphItem {
     pub request_id: String,
     pub paragraph: ParagraphContent,
+}
+
+/// The outcome of a book-info request.
+#[derive(Serialize, SignalPiece)]
+pub enum BookInfoOutcome {
+    Success {
+        id: String,
+        title: String,
+        author: String,
+        cover_url: Option<String>,
+        description: Option<String>,
+    },
+    Error {
+        /// Human-readable error message.
+        message: String,
+    },
+}
+
+/// Response for a single [`BookInfoRequest`].
+#[derive(Serialize, RustSignal)]
+pub struct BookInfoResult {
+    pub outcome: BookInfoOutcome,
 }
 
 /// The outcome of a feed stream.

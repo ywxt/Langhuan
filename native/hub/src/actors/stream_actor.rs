@@ -2,6 +2,7 @@
 //!
 //! # Responsibilities
 //! - Accept `SearchRequest`, `ChaptersRequest`, `ChapterContentRequest` from Dart.
+//! - Accept `BookInfoRequest` from Dart.
 //! - Launch each request as an independent async task identified by `request_id`.
 //! - Support concurrent in-flight requests (multiple parallel streams).
 //! - Accept `FeedCancelRequest` from Dart and abort the matching task.
@@ -25,9 +26,9 @@ use tokio_util::task::JoinMap;
 
 use crate::localize_error;
 use crate::signals::{
-    ChapterContentRequest, ChapterInfoItem, ChapterParagraphItem, ChaptersRequest,
-    FeedCancelRequest, FeedStreamEnd, FeedStreamOutcome, ParagraphContent, SearchRequest,
-    SearchResultItem,
+    BookInfoOutcome, BookInfoRequest, BookInfoResult, ChapterContentRequest, ChapterInfoItem,
+    ChapterParagraphItem, ChaptersRequest, FeedCancelRequest, FeedStreamEnd, FeedStreamOutcome,
+    ParagraphContent, SearchRequest, SearchResultItem,
 };
 
 use super::registry_actor::{GetFeed, RegistryActor};
@@ -57,6 +58,7 @@ impl StreamActor {
         _owned_tasks.spawn(Self::listen_to_search(self_addr.clone()));
         _owned_tasks.spawn(Self::listen_to_chapters(self_addr.clone()));
         _owned_tasks.spawn(Self::listen_to_chapter_content(self_addr.clone()));
+        _owned_tasks.spawn(Self::listen_to_book_info(self_addr.clone()));
         _owned_tasks.spawn(Self::listen_to_cancel(self_addr));
         Self {
             registry_addr,
@@ -72,8 +74,12 @@ impl StreamActor {
     /// Handle an incoming `SearchRequest` from Dart.
     async fn do_search(&mut self, req: SearchRequest) {
         let request_id = req.request_id.clone();
-        let Some(feed) = self.resolve_feed(&req.feed_id, &request_id).await else {
-            return;
+        let feed = match self.resolve_feed(&req.feed_id).await {
+            Ok(feed) => feed,
+            Err(outcome) => {
+                emit_end(&request_id, outcome);
+                return;
+            }
         };
 
         self.stream_tasks.spawn(request_id, async move {
@@ -84,8 +90,12 @@ impl StreamActor {
     /// Handle an incoming `ChaptersRequest` from Dart.
     async fn do_chapters(&mut self, req: ChaptersRequest) {
         let request_id = req.request_id.clone();
-        let Some(feed) = self.resolve_feed(&req.feed_id, &request_id).await else {
-            return;
+        let feed = match self.resolve_feed(&req.feed_id).await {
+            Ok(feed) => feed,
+            Err(outcome) => {
+                emit_end(&request_id, outcome);
+                return;
+            }
         };
 
         self.stream_tasks.spawn(request_id, async move {
@@ -96,13 +106,27 @@ impl StreamActor {
     /// Handle an incoming `ChapterContentRequest` from Dart.
     async fn do_chapter_content(&mut self, req: ChapterContentRequest) {
         let request_id = req.request_id.clone();
-        let Some(feed) = self.resolve_feed(&req.feed_id, &request_id).await else {
-            return;
+        let feed = match self.resolve_feed(&req.feed_id).await {
+            Ok(feed) => feed,
+            Err(outcome) => {
+                emit_end(&request_id, outcome);
+                return;
+            }
         };
 
         self.stream_tasks.spawn(request_id, async move {
             run_chapter_content(feed, req).await;
         });
+    }
+
+    /// Handle an incoming `BookInfoRequest` from Dart.
+    async fn do_book_info(&mut self, req: BookInfoRequest) -> BookInfoResult {
+        match self.resolve_feed_result(&req.feed_id).await {
+            Ok(feed) => run_book_info(&feed, req).await,
+            Err(message) => BookInfoResult {
+                outcome: BookInfoOutcome::Error { message },
+            },
+        }
     }
 
     /// Cancel the task identified by `request_id`, if it is still running.
@@ -121,9 +145,7 @@ impl StreamActor {
 
     /// Resolve a pre-compiled [`LuaFeed`] by sending a [`GetFeed`] message to
     /// the [`RegistryActor`].
-    ///
-    /// Emits a `Failed` [`FeedStreamEnd`] and returns `None` on error.
-    async fn resolve_feed(&mut self, feed_id: &str, request_id: &str) -> Option<Arc<LuaFeed>> {
+    async fn resolve_feed_result(&mut self, feed_id: &str) -> Result<Arc<LuaFeed>, String> {
         let result = self
             .registry_addr
             .send(GetFeed {
@@ -132,29 +154,21 @@ impl StreamActor {
             .await;
 
         match result {
-            Ok(Ok(feed)) => Some(feed),
-            Ok(Err(e)) => {
-                emit_end(
-                    request_id,
-                    FeedStreamOutcome::Failed {
-                        error: e.to_string(),
-                        retried_count: 0,
-                    },
-                );
-                None
-            }
-            Err(e) => {
-                // Actor mailbox error — should not happen in normal operation.
-                emit_end(
-                    request_id,
-                    FeedStreamOutcome::Failed {
-                        error: format!("internal error: {e}"),
-                        retried_count: 0,
-                    },
-                );
-                None
-            }
+            Ok(Ok(feed)) => Ok(feed),
+            Ok(Err(e)) => Err(e.to_string()),
+            Err(e) => Err(format!("internal error: {e}")),
         }
+    }
+
+    /// Resolve a pre-compiled [`LuaFeed`] by sending a [`GetFeed`] message to
+    /// the [`RegistryActor`].
+    async fn resolve_feed(&mut self, feed_id: &str) -> Result<Arc<LuaFeed>, FeedStreamOutcome> {
+        self.resolve_feed_result(feed_id)
+            .await
+            .map_err(|message| FeedStreamOutcome::Failed {
+                error: message,
+                retried_count: 0,
+            })
     }
 }
 
@@ -180,6 +194,13 @@ impl Notifiable<ChaptersRequest> for StreamActor {
 impl Notifiable<ChapterContentRequest> for StreamActor {
     async fn notify(&mut self, msg: ChapterContentRequest, _: &Context<Self>) {
         self.do_chapter_content(msg).await;
+    }
+}
+
+#[async_trait]
+impl Notifiable<BookInfoRequest> for StreamActor {
+    async fn notify(&mut self, msg: BookInfoRequest, _: &Context<Self>) {
+        self.do_book_info(msg).await.send_signal_to_dart();
     }
 }
 
@@ -213,6 +234,13 @@ impl StreamActor {
 
     async fn listen_to_chapter_content(mut self_addr: Address<Self>) {
         let receiver = ChapterContentRequest::get_dart_signal_receiver();
+        while let Some(signal_pack) = receiver.recv().await {
+            let _ = self_addr.notify(signal_pack.message).await;
+        }
+    }
+
+    async fn listen_to_book_info(mut self_addr: Address<Self>) {
+        let receiver = BookInfoRequest::get_dart_signal_receiver();
         while let Some(signal_pack) = receiver.recv().await {
             let _ = self_addr.notify(signal_pack.message).await;
         }
@@ -306,4 +334,21 @@ async fn run_chapter_content(feed: Arc<LuaFeed>, req: ChapterContentRequest) {
         }
     })
     .await;
+}
+
+async fn run_book_info(feed: &LuaFeed, req: BookInfoRequest) -> BookInfoResult {
+    let outcome = match feed.book_info(&req.book_id).await {
+        Ok(info) => BookInfoOutcome::Success {
+            id: info.id,
+            title: info.title,
+            author: info.author,
+            cover_url: info.cover_url,
+            description: info.description,
+        },
+        Err(e) => BookInfoOutcome::Error {
+            message: localize_error(&e),
+        },
+    };
+
+    BookInfoResult { outcome }
 }

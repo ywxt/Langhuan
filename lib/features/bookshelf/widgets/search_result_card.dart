@@ -6,9 +6,10 @@ import '../../feeds/feed_service.dart';
 
 /// Card-style search result with book cover, title, author, and description.
 class SearchResultCard extends StatelessWidget {
-  const SearchResultCard({super.key, required this.item});
+  const SearchResultCard({super.key, required this.item, this.onTap});
 
   final SearchResultModel item;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -19,9 +20,7 @@ class SearchResultCard extends StatelessWidget {
       borderRadius: LanghuanTheme.borderRadiusMd,
       child: InkWell(
         borderRadius: LanghuanTheme.borderRadiusMd,
-        onTap: () {
-          // TODO: navigate to book detail page
-        },
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(LanghuanTheme.spaceMd),
           child: Row(

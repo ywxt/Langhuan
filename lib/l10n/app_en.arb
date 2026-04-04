@@ -65,6 +65,38 @@
   "searchLoadingMore": "Loading more…",
   "@searchLoadingMore": { "description": "Streaming badge at bottom of results" },
 
+  "bookDetailTitle": "Book Details",
+  "@bookDetailTitle": { "description": "Book detail page title" },
+
+  "bookDetailError": "Failed to load book details",
+  "@bookDetailError": { "description": "Book detail page error title" },
+
+  "bookDetailRetry": "Retry",
+  "@bookDetailRetry": { "description": "Retry button label on book detail page" },
+
+  "bookDetailStartReading": "Start Reading",
+  "@bookDetailStartReading": { "description": "Primary action button on book detail page" },
+
+  "bookDetailNoDescription": "No description available",
+  "@bookDetailNoDescription": { "description": "Fallback text when description is empty" },
+
+  "bookDetailChapters": "Chapters ({count})",
+  "@bookDetailChapters": {
+    "description": "Chapter section title with chapter count",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+
+  "bookDetailChaptersError": "Failed to load chapters",
+  "@bookDetailChaptersError": { "description": "Chapter list load error title" },
+
+  "bookDetailMissingParams": "Missing book parameters",
+  "@bookDetailMissingParams": { "description": "Shown when route params are missing" },
+
+  "bookDetailEmpty": "No book information available",
+  "@bookDetailEmpty": { "description": "Fallback when no book data is returned" },
+
   "feedsTitle": "Feeds",
   "@feedsTitle": { "description": "Feeds page title" },
 

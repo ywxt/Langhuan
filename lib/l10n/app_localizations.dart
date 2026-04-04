@@ -206,6 +206,60 @@ abstract class AppLocalizations {
   /// **'Loading more…'**
   String get searchLoadingMore;
 
+  /// Book detail page title
+  ///
+  /// In en, this message translates to:
+  /// **'Book Details'**
+  String get bookDetailTitle;
+
+  /// Book detail page error title
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load book details'**
+  String get bookDetailError;
+
+  /// Retry button label on book detail page
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get bookDetailRetry;
+
+  /// Primary action button on book detail page
+  ///
+  /// In en, this message translates to:
+  /// **'Start Reading'**
+  String get bookDetailStartReading;
+
+  /// Fallback text when description is empty
+  ///
+  /// In en, this message translates to:
+  /// **'No description available'**
+  String get bookDetailNoDescription;
+
+  /// Chapter section title with chapter count
+  ///
+  /// In en, this message translates to:
+  /// **'Chapters ({count})'**
+  String bookDetailChapters(int count);
+
+  /// Chapter list load error title
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load chapters'**
+  String get bookDetailChaptersError;
+
+  /// Shown when route params are missing
+  ///
+  /// In en, this message translates to:
+  /// **'Missing book parameters'**
+  String get bookDetailMissingParams;
+
+  /// Fallback when no book data is returned
+  ///
+  /// In en, this message translates to:
+  /// **'No book information available'**
+  String get bookDetailEmpty;
+
   /// Feeds page title
   ///
   /// In en, this message translates to:

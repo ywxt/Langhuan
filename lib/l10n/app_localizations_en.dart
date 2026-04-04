@@ -67,6 +67,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get searchLoadingMore => 'Loading more…';
 
   @override
+  String get bookDetailTitle => 'Book Details';
+
+  @override
+  String get bookDetailError => 'Failed to load book details';
+
+  @override
+  String get bookDetailRetry => 'Retry';
+
+  @override
+  String get bookDetailStartReading => 'Start Reading';
+
+  @override
+  String get bookDetailNoDescription => 'No description available';
+
+  @override
+  String bookDetailChapters(int count) {
+    return 'Chapters ($count)';
+  }
+
+  @override
+  String get bookDetailChaptersError => 'Failed to load chapters';
+
+  @override
+  String get bookDetailMissingParams => 'Missing book parameters';
+
+  @override
+  String get bookDetailEmpty => 'No book information available';
+
+  @override
   String get feedsTitle => 'Feeds';
 
   @override

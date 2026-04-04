@@ -40,6 +40,23 @@ class ChapterInfoModel {
 }
 
 @immutable
+class BookInfoModel {
+  const BookInfoModel({
+    required this.id,
+    required this.title,
+    required this.author,
+    this.coverUrl,
+    this.description,
+  });
+
+  final String id;
+  final String title;
+  final String author;
+  final String? coverUrl;
+  final String? description;
+}
+
+@immutable
 class FeedPreviewModel {
   const FeedPreviewModel({
     required this.requestId,
@@ -162,6 +179,36 @@ class FeedService {
     );
 
     return (requestId: requestId, stream: stream);
+  }
+
+  // -------------------------------------------------------------------------
+  // Book info
+  // -------------------------------------------------------------------------
+
+  /// Request detailed information for a single book.
+  Future<BookInfoModel> bookInfo({
+    required String feedId,
+    required String bookId,
+  }) {
+    return _subscribeAndSendNext(
+      responseStream: BookInfoResult.rustSignalStream,
+      send: () {
+        BookInfoRequest(feedId: feedId, bookId: bookId).sendSignalToRust();
+      },
+    ).then((message) {
+      final outcome = message.outcome;
+      if (outcome is BookInfoOutcomeError) {
+        throw BookInfoException(message: outcome.message);
+      }
+      final success = outcome as BookInfoOutcomeSuccess;
+      return BookInfoModel(
+        id: success.id,
+        title: success.title,
+        author: success.author,
+        coverUrl: success.coverUrl,
+        description: success.description,
+      );
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -428,4 +475,13 @@ class FeedPreviewException implements Exception {
 
   @override
   String toString() => 'FeedPreviewException: $message';
+}
+
+class BookInfoException implements Exception {
+  const BookInfoException({required this.message});
+
+  final String message;
+
+  @override
+  String toString() => 'BookInfoException: $message';
 }

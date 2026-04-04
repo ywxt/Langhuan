@@ -23,6 +23,16 @@
   "searchRetry": "重試",
   "searchLoadingMore": "加載更多…",
 
+  "bookDetailTitle": "書籍詳情",
+  "bookDetailError": "加載書籍信息失敗",
+  "bookDetailRetry": "重試",
+  "bookDetailStartReading": "開始閱讀",
+  "bookDetailNoDescription": "暫無簡介",
+  "bookDetailChapters": "章節（{count}）",
+  "bookDetailChaptersError": "加載章節失敗",
+  "bookDetailMissingParams": "缺少書籍參數",
+  "bookDetailEmpty": "暫無書籍信息",
+
   "feedsTitle": "書源",
   "feedsSearchHint": "搜索書源…",
   "feedsEmpty": "暫無書源\n請將腳本文件放入 scripts 文件夾",

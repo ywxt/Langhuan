@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:langhuan/rust_init.dart';
 
 import '../../l10n/app_localizations.dart';
@@ -219,7 +220,21 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       itemBuilder: (context, index) {
         return Padding(
           padding: const EdgeInsets.only(bottom: LanghuanTheme.spaceSm),
-          child: SearchResultCard(item: searchState.items[index]),
+          child: SearchResultCard(
+            item: searchState.items[index],
+            onTap: selectedFeed == null
+                ? null
+                : () {
+                    final item = searchState.items[index];
+                    context.pushNamed(
+                      'bookshelf-book-detail',
+                      queryParameters: {
+                        'feedId': selectedFeed.id,
+                        'bookId': item.id,
+                      },
+                    );
+                  },
+          ),
         );
       },
     );

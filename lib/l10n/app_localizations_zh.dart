@@ -67,6 +67,35 @@ class AppLocalizationsZh extends AppLocalizations {
   String get searchLoadingMore => '加載更多…';
 
   @override
+  String get bookDetailTitle => '書籍詳情';
+
+  @override
+  String get bookDetailError => '加載書籍信息失敗';
+
+  @override
+  String get bookDetailRetry => '重試';
+
+  @override
+  String get bookDetailStartReading => '開始閱讀';
+
+  @override
+  String get bookDetailNoDescription => '暫無簡介';
+
+  @override
+  String bookDetailChapters(int count) {
+    return '章節（$count）';
+  }
+
+  @override
+  String get bookDetailChaptersError => '加載章節失敗';
+
+  @override
+  String get bookDetailMissingParams => '缺少書籍參數';
+
+  @override
+  String get bookDetailEmpty => '暫無書籍信息';
+
+  @override
   String get feedsTitle => '書源';
 
   @override
