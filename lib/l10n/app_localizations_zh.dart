@@ -172,6 +172,12 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get readerEndOfBook => '已讀完全書';
+
+  @override
+  String get readerLoading => '加載中…';
+
+  @override
   String get feedsTitle => '書源';
 
   @override

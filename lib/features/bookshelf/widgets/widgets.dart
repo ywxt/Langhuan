@@ -1,3 +1,4 @@
+export 'base_reader_view.dart';
 export 'chapter_content_manager.dart';
 export 'chapter_window_manager.dart';
 export 'feed_selector.dart';

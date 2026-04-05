@@ -404,6 +404,18 @@ abstract class AppLocalizations {
   /// **'Chapter {index}'**
   String readerChapterFallbackTitle(int index);
 
+  /// Message shown after the last chapter of the book
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ve reached the end of the book'**
+  String get readerEndOfBook;
+
+  /// Loading indicator text shown while a chapter is being fetched
+  ///
+  /// In en, this message translates to:
+  /// **'Loading…'**
+  String get readerLoading;
+
   /// Feeds page title
   ///
   /// In en, this message translates to:

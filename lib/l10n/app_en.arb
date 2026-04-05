@@ -180,6 +180,12 @@
     }
   },
 
+  "readerEndOfBook": "You've reached the end of the book",
+  "@readerEndOfBook": { "description": "Message shown after the last chapter of the book" },
+
+  "readerLoading": "Loading\u2026",
+  "@readerLoading": { "description": "Loading indicator text shown while a chapter is being fetched" },
+
   "feedsTitle": "Feeds",
   "@feedsTitle": { "description": "Feeds page title" },
 

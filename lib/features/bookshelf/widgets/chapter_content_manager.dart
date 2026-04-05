@@ -24,6 +24,10 @@ class ChapterContentManager extends StatefulWidget {
     required this.contentPadding,
     required this.onChapterChanged,
     required this.onParagraphChanged,
+    this.bookTitle,
+    this.bookAuthor,
+    this.bookCoverUrl,
+    this.bookDescription,
   });
 
   final String feedId;
@@ -35,6 +39,10 @@ class ChapterContentManager extends StatefulWidget {
   final EdgeInsets contentPadding;
   final ValueChanged<String> onChapterChanged;
   final ValueChanged<int> onParagraphChanged;
+  final String? bookTitle;
+  final String? bookAuthor;
+  final String? bookCoverUrl;
+  final String? bookDescription;
 
   @override
   State<ChapterContentManager> createState() => _ChapterContentManagerState();
@@ -53,6 +61,10 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
         contentPadding: widget.contentPadding,
         onChapterChanged: widget.onChapterChanged,
         onParagraphChanged: widget.onParagraphChanged,
+        bookTitle: widget.bookTitle,
+        bookAuthor: widget.bookAuthor,
+        bookCoverUrl: widget.bookCoverUrl,
+        bookDescription: widget.bookDescription,
       );
     } else {
       return HorizontalReaderView(
@@ -64,6 +76,10 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
         contentPadding: widget.contentPadding,
         onChapterChanged: widget.onChapterChanged,
         onParagraphChanged: widget.onParagraphChanged,
+        bookTitle: widget.bookTitle,
+        bookAuthor: widget.bookAuthor,
+        bookCoverUrl: widget.bookCoverUrl,
+        bookDescription: widget.bookDescription,
       );
     }
   }

@@ -174,6 +174,12 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get readerEndOfBook => 'You\'ve reached the end of the book';
+
+  @override
+  String get readerLoading => 'Loading…';
+
+  @override
   String get feedsTitle => 'Feeds';
 
   @override

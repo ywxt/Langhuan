@@ -58,6 +58,9 @@
   "readerModeHorizontal": "左右翻頁",
   "readerChapterFallbackTitle": "第 {index} 章",
 
+  "readerEndOfBook": "已讀完全書",
+  "readerLoading": "加載中\u2026",
+
   "feedsTitle": "書源",
   "feedsSearchHint": "搜索書源…",
   "feedsEmpty": "暫無書源\n請將腳本文件放入 scripts 文件夾",

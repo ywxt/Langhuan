@@ -1,10 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../../l10n/app_localizations.dart';
 import '../../../src/bindings/signals/signals.dart';
-import '../../feeds/feed_service.dart';
+import 'base_reader_view.dart';
 import 'chapter_window_manager.dart';
 import 'paragraph_view.dart';
 
@@ -57,84 +55,57 @@ class _ChapterRange {
 /// Infinite-scroll ListView reader for vertical reading mode.
 /// Adjacent chapters are preloaded and already in the item array before
 /// the user reaches them. Chapter transitions feel seamless.
-class VerticalReaderView extends StatefulWidget {
+class VerticalReaderView extends BaseReaderView {
   const VerticalReaderView({
     super.key,
-    required this.feedId,
-    required this.bookId,
-    required this.chapters,
-    required this.initialChapterId,
-    required this.initialParagraphIndex,
-    required this.contentPadding,
-    required this.onChapterChanged,
-    required this.onParagraphChanged,
+    required super.feedId,
+    required super.bookId,
+    required super.chapters,
+    required super.initialChapterId,
+    required super.initialParagraphIndex,
+    required super.contentPadding,
+    required super.onChapterChanged,
+    required super.onParagraphChanged,
+    super.bookTitle,
+    super.bookAuthor,
+    super.bookCoverUrl,
+    super.bookDescription,
   });
-
-  final String feedId;
-  final String bookId;
-  final List<ChapterInfoModel> chapters;
-  final String initialChapterId;
-  final int initialParagraphIndex;
-  final EdgeInsets contentPadding;
-  final ValueChanged<String> onChapterChanged;
-  final ValueChanged<int> onParagraphChanged;
 
   @override
   State<VerticalReaderView> createState() => _VerticalReaderViewState();
 }
 
-class _VerticalReaderViewState extends State<VerticalReaderView>
-    with ChapterWindowManager<VerticalReaderView> {
-  // ─ Controllers
+class _VerticalReaderViewState extends BaseReaderViewState<VerticalReaderView> {
+  // ─ Controller
   late final ScrollController _scrollController;
 
   // ─ Cached view data
-  late List<_VerticalItem> _cachedItems = [];
-  late List<_ChapterRange> _chapterRanges = [];
+  List<_VerticalItem> _cachedItems = [];
+  List<_ChapterRange> _chapterRanges = [];
 
-  // ─ Position tracking
-  int _currentParagraphIndex = 0;
-  String? _currentVisibleChapterId;
+  // ─ Abstract method implementations ───────────────────────────────────────
 
   @override
-  void initState() {
-    super.initState();
-    initChapterWindow(
-      chapters: widget.chapters,
-      feedId: widget.feedId,
-      bookId: widget.bookId,
-    );
-
+  void initController() {
     _scrollController = ScrollController()..addListener(_onScroll);
-    _currentParagraphIndex = widget.initialParagraphIndex;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _initialize();
-    });
   }
 
   @override
-  void dispose() {
+  void disposeController() {
     _scrollController
       ..removeListener(_onScroll)
       ..dispose();
-    disposeChapterWindow();
-    super.dispose();
   }
 
-  // ─ Initialization ────────────────────────────────────────────────────────
-
-  Future<void> _initialize() async {
-    await loadInitial(widget.initialChapterId);
-    if (mounted) {
-      _rebuildCache();
-      setState(() {});
-      _restoreInitialPosition();
-    }
+  @override
+  void onInitialLoadComplete() {
+    _rebuildCache();
+    setState(() {});
   }
 
-  void _restoreInitialPosition() {
+  @override
+  void restoreInitialPosition() {
     if (widget.initialParagraphIndex <= 0) return;
 
     final initialSlot = getSlot(widget.initialChapterId);
@@ -158,70 +129,67 @@ class _VerticalReaderViewState extends State<VerticalReaderView>
     });
   }
 
+  @override
+  bool isApproachingEnd() {
+    if (!_scrollController.hasClients) return false;
+    final maxExtent = _scrollController.position.maxScrollExtent;
+    final currentExtent = _scrollController.offset;
+    return maxExtent > 0 && (maxExtent - currentExtent) < 500;
+  }
+
+  @override
+  bool isApproachingStart() {
+    if (!_scrollController.hasClients) return false;
+    return _scrollController.offset < 500;
+  }
+
+  @override
+  void onSlotLoaded(ChapterSlot slot) {
+    _rebuildCache();
+  }
+
+  @override
+  void onSlotEvicted(ChapterSlot slot, bool fromTop) {
+    _rebuildCache();
+    if (fromTop && slot.content != null) {
+      final estimatedHeight = slot.content!.length * 20.0;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients && mounted) {
+          final newOffset = (_scrollController.offset - estimatedHeight).clamp(
+            0.0,
+            double.infinity,
+          );
+          _scrollController.jumpTo(newOffset);
+        }
+      });
+    }
+  }
+
   // ─ Scroll Listener ───────────────────────────────────────────────────────
 
   void _onScroll() {
     if (!_scrollController.hasClients) return;
-
-    // Detect which chapter is visible based on scroll position
     _detectVisibleChapter();
-
-    // Trigger preload if approaching boundary
-    _preloadIfApproachingBoundary();
+    preloadIfApproachingBoundary();
   }
 
   void _detectVisibleChapter() {
     if (_scrollController.position.pixels < 0) return;
 
-    // For a rough estimate, assume average item height
-    // In practice, this would require measuring actual item heights
-    // For now, use scroll position to estimate visible paragraph
     final maxExtent = _scrollController.position.maxScrollExtent;
     if (maxExtent <= 0) return;
 
     final ratio = (_scrollController.offset / maxExtent).clamp(0.0, 1.0);
-    _currentParagraphIndex = (ratio * 100).round(); // Rough estimate
+    final estimatedIdx = (ratio * 100).round();
 
-    // Update current visible chapter based on cache ranges
     for (final range in _chapterRanges) {
-      if (range.contains(_currentParagraphIndex)) {
-        if (_currentVisibleChapterId != range.chapterId) {
-          _currentVisibleChapterId = range.chapterId;
-          setCurrentChapter(range.chapterId);
-          widget.onChapterChanged(range.chapterId);
-        }
+      if (range.contains(estimatedIdx)) {
+        handleChapterBecameVisible(range.chapterId);
         break;
       }
     }
 
-    widget.onParagraphChanged(_currentParagraphIndex);
-  }
-
-  void _preloadIfApproachingBoundary() {
-    if (!_scrollController.hasClients) return;
-
-    final maxExtent = _scrollController.position.maxScrollExtent;
-    final currentExtent = _scrollController.offset;
-
-    // Approaching bottom? Trigger next chapter preload
-    if (maxExtent > 0 && (maxExtent - currentExtent) < 500) {
-      if (hasNewerUnloaded) {
-        final nextIdx = loadedSlots.last.chapterIndex + 1;
-        if (nextIdx < widget.chapters.length) {
-          loadChapter(widget.chapters[nextIdx].id).catchError((_) {});
-        }
-      }
-    }
-
-    // Approaching top? Trigger prev chapter preload
-    if (currentExtent < 500) {
-      if (hasOlderUnloaded) {
-        final prevIdx = loadedSlots.first.chapterIndex - 1;
-        if (prevIdx >= 0) {
-          loadChapter(widget.chapters[prevIdx].id).catchError((_) {});
-        }
-      }
-    }
+    updateParagraphIndex(estimatedIdx);
   }
 
   // ─ Cache Management ──────────────────────────────────────────────────────
@@ -230,14 +198,10 @@ class _VerticalReaderViewState extends State<VerticalReaderView>
     final items = <_VerticalItem>[];
     final ranges = <_ChapterRange>[];
 
-    // Top boundary (only if first loaded chapter is not ch0)
-    if (loadedSlots.isNotEmpty && loadedSlots.first.chapterIndex > 0) {
-      items.add(
-        _VerticalItem(
-          type: _VerticalItemType.topBoundary,
-          chapterTitle: olderChapterTitle,
-        ),
-      );
+    // Top boundary — always shown when any chapter is loaded.
+    // Renders book info card at book start, loading spinner otherwise.
+    if (hasTopBoundary) {
+      items.add(const _VerticalItem(type: _VerticalItemType.topBoundary));
     }
 
     // Content from all loaded slots with separators
@@ -285,53 +249,14 @@ class _VerticalReaderViewState extends State<VerticalReaderView>
       );
     }
 
-    // Bottom boundary (only if last loaded chapter is not last)
-    if (loadedSlots.isNotEmpty &&
-        loadedSlots.last.chapterIndex < widget.chapters.length - 1) {
-      items.add(
-        _VerticalItem(
-          type: _VerticalItemType.bottomBoundary,
-          chapterTitle: newerChapterTitle,
-        ),
-      );
+    // Bottom boundary — always shown when any chapter is loaded.
+    // Renders end-of-book message at book end, loading spinner otherwise.
+    if (hasBottomBoundary) {
+      items.add(const _VerticalItem(type: _VerticalItemType.bottomBoundary));
     }
 
     _cachedItems = items;
     _chapterRanges = ranges;
-  }
-
-  // ─ ChapterWindowManager Callbacks ────────────────────────────────────────
-
-  @override
-  void onChapterLoaded(ChapterSlot slot) {
-    if (mounted) {
-      _rebuildCache();
-      setState(() {});
-    }
-  }
-
-  @override
-  void onChaptersEvicted(ChapterSlot slot, bool fromTop) {
-    if (mounted) {
-      _rebuildCache();
-
-      // If evicted from top, adjust scroll offset
-      if (fromTop && slot.content != null) {
-        // Calculate approximate height of evicted content
-        // For now, use a rough estimate based on paragraph count
-        final estimatedHeight =
-            slot.content!.length * 20.0; // rough ~20 per paragraph
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scrollController.hasClients && mounted) {
-            final newOffset = (_scrollController.offset - estimatedHeight)
-                .clamp(0.0, double.infinity);
-            _scrollController.jumpTo(newOffset);
-          }
-        });
-      }
-
-      setState(() {});
-    }
   }
 
   // ─ Build ─────────────────────────────────────────────────────────────────
@@ -347,22 +272,10 @@ class _VerticalReaderViewState extends State<VerticalReaderView>
 
         switch (item.type) {
           case _VerticalItemType.topBoundary:
-            return _buildBoundaryBlock(
-              context,
-              isTop: true,
-              title:
-                  item.chapterTitle ??
-                  AppLocalizations.of(context).readerAtFirstChapter,
-            );
+            return _buildTopBoundary(context);
 
           case _VerticalItemType.bottomBoundary:
-            return _buildBoundaryBlock(
-              context,
-              isTop: false,
-              title:
-                  item.chapterTitle ??
-                  AppLocalizations.of(context).readerAtLastChapter,
-            );
+            return _buildBottomBoundary(context);
 
           case _VerticalItemType.chapterSeparator:
             return _buildChapterSeparator(context, item.chapterTitle ?? '');
@@ -377,23 +290,116 @@ class _VerticalReaderViewState extends State<VerticalReaderView>
     );
   }
 
-  Widget _buildBoundaryBlock(
-    BuildContext context, {
-    required bool isTop,
-    required String title,
-  }) {
+  // ─ Boundary Widgets ─────────────────────────────────────────────────────
+
+  Widget _buildTopBoundary(BuildContext context) =>
+      isAtBookStart ? _buildBookInfoCard(context) : _buildLoadingBlock(context);
+
+  Widget _buildBottomBoundary(BuildContext context) =>
+      isAtBookEnd ? _buildEndOfBookBlock(context) : _buildLoadingBlock(context);
+
+  Widget _buildBookInfoCard(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.all(32),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: widget.bookCoverUrl != null
+                ? Image.network(
+                    widget.bookCoverUrl!,
+                    width: 120,
+                    height: 160,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        _buildCoverPlaceholder(context),
+                  )
+                : _buildCoverPlaceholder(context),
+          ),
+          if (widget.bookTitle != null) ...[
+            const SizedBox(height: 16),
+            Text(
+              widget.bookTitle!,
+              style: theme.textTheme.titleLarge,
+              textAlign: TextAlign.center,
+            ),
+          ],
+          if (widget.bookAuthor != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              widget.bookAuthor!,
+              style: theme.textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+          ],
+          if (widget.bookDescription != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              widget.bookDescription!,
+              style: theme.textTheme.bodySmall,
+              textAlign: TextAlign.center,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCoverPlaceholder(BuildContext context) {
+    return Container(
+      width: 120,
+      height: 160,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: const Icon(Icons.menu_book_outlined, size: 48),
+    );
+  }
+
+  Widget _buildEndOfBookBlock(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Container(
+      padding: const EdgeInsets.all(32),
       alignment: Alignment.center,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(isTop ? Icons.arrow_upward : Icons.arrow_downward, size: 32),
-          SizedBox(height: 8),
+          Icon(
+            Icons.check_circle_outline,
+            size: 48,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(height: 12),
           Text(
-            title,
-            style: Theme.of(context).textTheme.bodyMedium,
+            l10n.readerEndOfBook,
+            style: Theme.of(context).textTheme.titleMedium,
             textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoadingBlock(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Container(
+      padding: const EdgeInsets.all(32),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 12),
+          Text(
+            l10n.readerLoading,
+            style: Theme.of(context).textTheme.bodyMedium,
           ),
         ],
       ),

@@ -142,6 +142,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
         feedId: widget.feedId,
         bookId: widget.bookId,
       );
+      // Load book info in background — boundary widgets will update reactively.
+      unawaited(
+        ref
+            .read(bookInfoProvider.notifier)
+            .load(feedId: widget.feedId, bookId: widget.bookId),
+      );
       final resolvedChapterId = _resolveInitialChapterId(chapters, progress);
       final initialParagraphIndex =
           progress != null && progress.chapterId == resolvedChapterId
@@ -207,6 +213,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final bookInfo = ref.watch(bookInfoProvider);
 
     if (widget.feedId.isEmpty || widget.bookId.isEmpty) {
       return Scaffold(
@@ -288,6 +295,10 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                   ),
                   onChapterChanged: _onChapterChanged,
                   onParagraphChanged: _onParagraphChanged,
+                  bookTitle: bookInfo.book?.title,
+                  bookAuthor: bookInfo.book?.author,
+                  bookCoverUrl: bookInfo.book?.coverUrl,
+                  bookDescription: bookInfo.book?.description,
                 ),
               ),
 
