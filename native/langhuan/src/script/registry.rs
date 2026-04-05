@@ -7,13 +7,13 @@
 //! id      = "example-feed"
 //! name    = "範例書源"
 //! version = "1.0.0"
-//! file    = "example-feed/1.0.0.lua"
+//! file    = "h6578616d706c652d66656564/h312e302e30.lua"
 //!
 //! [[feeds]]
 //! id      = "another-feed"
 //! name    = "另一書源"
 //! version = "2.1.0"
-//! file    = "another-feed/2.1.0.lua"
+//! file    = "h616e6f746865722d66656564/h322e312e30.lua"
 //! ```
 //!
 //! **Upgrade strategy**: write the new script to a new versioned file, then
@@ -32,6 +32,7 @@ use super::lua::LuaFeed;
 use super::runtime::ScriptEngine;
 use crate::error::{Error, Result};
 use crate::util::fs::write_atomic;
+use crate::util::path_key::encode_path_component;
 
 // ---------------------------------------------------------------------------
 // TOML data structures
@@ -183,7 +184,8 @@ impl ScriptRegistry {
     ///
     /// Steps:
     /// 1. Parse metadata from `content` via [`super::meta::parse_meta`].
-    /// 2. Write the Lua file to `<base_dir>/<feed_id>/<version>.lua`.
+    /// 2. Write the Lua file to
+    ///    `<base_dir>/<encoded(feed_id)>/<encoded(version)>.lua`.
     /// 3. Update `<base_dir>/registry.toml`, replacing any existing entry with
     ///    the same `id` (upgrade) or appending a new entry.
     /// 4. Return the new [`RegistryEntry`].
@@ -209,7 +211,9 @@ impl ScriptRegistry {
         );
 
         // 2. Write the Lua script file.
-        let script_dir = self.base_dir.join(feed_id.as_str());
+        let script_dir = self
+            .base_dir
+            .join(encode_path_component(feed_id.as_str()));
         tokio::fs::create_dir_all(&script_dir)
             .await
             .map_err(|e| Error::RegistryWrite(e.to_string()))?;
@@ -408,7 +412,7 @@ fn registry_path(base_dir: &Path) -> PathBuf {
 
 #[inline]
 fn feed_path(feed_id: &str, version: &str) -> PathBuf {
-    Path::new(feed_id).join(format!("{}.lua", version))
+    Path::new(&encode_path_component(feed_id)).join(format!("{}.lua", encode_path_component(version)))
 }
 
 #[cfg(test)]
@@ -496,7 +500,7 @@ return {{
             name: "Test Feed".to_owned(),
             version: version.to_owned(),
             author: None,
-            file: format!("{feed_id}/{version}.lua"),
+            file: feed_path(feed_id, version).display().to_string(),
         };
 
         let script_path = base_dir.join(&entry.file);
@@ -529,9 +533,9 @@ return {{
 id      = "test-feed"
 name    = "Test Feed"
 version = "1.0.0"
-file    = "test-feed/1.0.0.lua"
+file    = "h746573742d66656564/h312e302e30.lua"
 "#;
-        let dir = setup_dir(toml, &[("test-feed/1.0.0.lua", MINIMAL_SCRIPT)]).await;
+    let dir = setup_dir(toml, &[("h746573742d66656564/h312e302e30.lua", MINIMAL_SCRIPT)]).await;
         let registry = ScriptRegistry::load_entries(dir.path())
             .await
             .expect("load");
@@ -550,20 +554,20 @@ file    = "test-feed/1.0.0.lua"
 id      = "feed-a"
 name    = "Feed A"
 version = "1.0.0"
-file    = "feed-a/1.0.0.lua"
+file    = "h666565642d61/h312e302e30.lua"
 
 [[feeds]]
 id      = "feed-b"
 name    = "Feed B"
 version = "2.0.0"
 author  = "Alice"
-file    = "feed-b/2.0.0.lua"
+file    = "h666565642d62/h322e302e30.lua"
 "#;
         let dir = setup_dir(
             toml,
             &[
-                ("feed-a/1.0.0.lua", MINIMAL_SCRIPT),
-                ("feed-b/2.0.0.lua", MINIMAL_SCRIPT),
+                ("h666565642d61/h312e302e30.lua", MINIMAL_SCRIPT),
+                ("h666565642d62/h322e302e30.lua", MINIMAL_SCRIPT),
             ],
         )
         .await;
@@ -655,13 +659,13 @@ file    = "feed-b/2.0.0.lua"
 id      = "dup"
 name    = "First"
 version = "1.0.0"
-file    = "dup/1.0.0.lua"
+file    = "h647570/h312e302e30.lua"
 
 [[feeds]]
 id      = "dup"
 name    = "Second"
 version = "2.0.0"
-file    = "dup/2.0.0.lua"
+file    = "h647570/h322e302e30.lua"
 "#;
         let dir = setup_dir(toml, &[]).await;
         let err = ScriptRegistry::load_entries(dir.path())
@@ -740,7 +744,7 @@ file    = "dup/2.0.0.lua"
             .expect("persisted installed-feed");
         assert_eq!(persisted_entry.version, "1.2.3");
 
-        let script_path = dir.path().join("installed-feed/1.2.3.lua");
+        let script_path = dir.path().join(feed_path("installed-feed", "1.2.3"));
         assert!(script_path.exists(), "installed script file should exist");
     }
 
@@ -768,7 +772,7 @@ file    = "dup/2.0.0.lua"
             !registry.has_feed("rollback-feed"),
             "in-memory feed should be rolled back"
         );
-        let script_path = dir.path().join("rollback-feed/9.9.9.lua");
+        let script_path = dir.path().join(feed_path("rollback-feed", "9.9.9"));
         assert!(
             !script_path.exists(),
             "script file should be cleaned up on rollback"
@@ -802,7 +806,7 @@ return {}
         assert!(matches!(err, Error::Lua(_)));
         assert!(!registry.has_feed("bad-feed"));
 
-        let script_path = dir.path().join("bad-feed/1.0.0.lua");
+        let script_path = dir.path().join(feed_path("bad-feed", "1.0.0"));
         assert!(
             !script_path.exists(),
             "script file should be removed on load failure"
@@ -830,7 +834,7 @@ return {}
             .await
             .expect("persist initial registry");
 
-        let script_path = dir.path().join("remove-me/1.0.0.lua");
+        let script_path = dir.path().join(feed_path("remove-me", "1.0.0"));
         assert!(script_path.exists(), "precondition: script file exists");
 
         registry
@@ -866,7 +870,7 @@ return {}
 
         // Force remove_file to fail with a non-NotFound error by replacing the
         // script file with a directory.
-        let script_path = dir.path().join("rollback-remove/1.0.0.lua");
+        let script_path = dir.path().join(feed_path("rollback-remove", "1.0.0"));
         fs::remove_file(&script_path)
             .await
             .expect("remove existing script file");

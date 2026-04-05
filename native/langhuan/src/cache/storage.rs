@@ -3,15 +3,20 @@ use std::path::PathBuf;
 use toml;
 
 use crate::error::{
-    Error, FormatKind, FormatOperation, Result, StorageKind, StorageOperation,
+    CacheKeyMismatchError, CacheSchemaMismatchError, Error, FormatKind,
+    FormatOperation, Result, StorageKind, StorageOperation,
 };
 use crate::util::fs::write_atomic;
+use crate::util::path_key::encode_path_component;
 
-use super::models::{ChapterCacheEntry, ProgressFile, ReadingProgress, CACHE_SCHEMA_VERSION};
+use super::models::{
+    ChapterCacheEntry, ChapterListCacheEntry, CACHE_SCHEMA_VERSION,
+};
 
 /// Cache storage for chapter content.
 ///
-/// Organizes cached chapters by `<cache_dir>/<feed_id>/<book_id>/<chapter_id>.toml`.
+/// Organizes cached chapters by
+/// `<cache_dir>/<encoded_feed_id>/<encoded_book_id>/<encoded_chapter_id>.toml`.
 /// Each entry is stored as a TOML file containing paragraphs and metadata.
 #[derive(Debug, Clone)]
 pub struct CacheStore {
@@ -26,59 +31,150 @@ impl CacheStore {
         }
     }
 
+    fn feed_dir(&self, feed_id: &str) -> PathBuf {
+        self.cache_dir.join(encode_path_component(feed_id))
+    }
+
+    fn book_dir(&self, feed_id: &str, book_id: &str) -> PathBuf {
+        self.feed_dir(feed_id).join(encode_path_component(book_id))
+    }
+
     /// Get the path for a cached chapter entry.
     fn chapter_cache_path(&self, feed_id: &str, book_id: &str, chapter_id: &str) -> PathBuf {
-        self.cache_dir
-            .join(feed_id)
-            .join(book_id)
-            .join(format!("{}.toml", chapter_id))
+        self.book_dir(feed_id, book_id)
+            .join(format!("{}.toml", encode_path_component(chapter_id)))
     }
 
-    fn progress_path(&self) -> PathBuf {
-        self.cache_dir.join("progress.toml")
+    fn chapter_list_path(&self, feed_id: &str, book_id: &str) -> PathBuf {
+        self.book_dir(feed_id, book_id).join("_chapters.toml")
     }
 
-    async fn load_progress_file(&self) -> Result<ProgressFile> {
-        let path = self.progress_path();
+    /// Load a chapter list from cache.
+    ///
+    /// Returns `Ok(None)` when the chapter list is not cached. Returns `Err`
+    /// when an existing cache file cannot be read, parsed, or validated.
+    pub async fn get_chapters(&self, feed_id: &str, book_id: &str) -> Result<Option<ChapterListCacheEntry>> {
+        let path = self.chapter_list_path(feed_id, book_id);
+
         if !path.exists() {
-            return Ok(ProgressFile::default());
+            tracing::debug!(
+                feed_id = %feed_id,
+                book_id = %book_id,
+                "chapter list not in cache"
+            );
+            return Ok(None);
         }
 
-        let content = tokio::fs::read_to_string(&path)
-            .await
-            .map_err(|e| Error::Storage {
-                kind: StorageKind::ReadingProgress,
+        match tokio::fs::read_to_string(&path).await {
+            Ok(content) => match toml::from_str::<ChapterListCacheEntry>(&content) {
+                Ok(entry) => {
+                    if entry.schema_version != CACHE_SCHEMA_VERSION {
+                        return Err(Error::CacheSchemaMismatch {
+                            details: Box::new(CacheSchemaMismatchError {
+                                feed_id: feed_id.to_string(),
+                                book_id: book_id.to_string(),
+                                chapter_id: "_chapters".to_string(),
+                                cached_version: entry.schema_version,
+                                expected_version: CACHE_SCHEMA_VERSION,
+                            }),
+                        });
+                    }
+                    if entry.feed_id != feed_id || entry.book_id != book_id {
+                        return Err(Error::CacheKeyMismatch {
+                            details: Box::new(CacheKeyMismatchError {
+                                expected_feed_id: feed_id.to_string(),
+                                expected_book_id: book_id.to_string(),
+                                expected_chapter_id: "_chapters".to_string(),
+                                actual_feed_id: entry.feed_id,
+                                actual_book_id: entry.book_id,
+                                actual_chapter_id: "_chapters".to_string(),
+                            }),
+                        });
+                    }
+
+                    tracing::debug!(
+                        feed_id = %feed_id,
+                        book_id = %book_id,
+                        chapters = entry.chapters.len(),
+                        "loaded chapter list from cache"
+                    );
+
+                    Ok(Some(entry))
+                }
+                Err(e) => Err(Error::Format {
+                    kind: FormatKind::ChapterCache,
+                    operation: FormatOperation::Deserialize,
+                    message: e.to_string(),
+                }),
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                tracing::debug!(
+                    feed_id = %feed_id,
+                    book_id = %book_id,
+                    "chapter list cache disappeared while reading"
+                );
+                Ok(None)
+            }
+            Err(e) => Err(Error::Storage {
+                kind: StorageKind::ChapterCache,
                 operation: StorageOperation::Read,
                 message: e.to_string(),
-            })?;
-
-        toml::from_str::<ProgressFile>(&content)
-            .map_err(|e| Error::Format {
-                kind: FormatKind::ReadingProgress,
-                operation: FormatOperation::Deserialize,
-                message: e.to_string(),
-            })
+            }),
+        }
     }
 
-    async fn save_progress_file(&self, file: &ProgressFile) -> Result<()> {
-        let path = self.progress_path();
+    /// Save a chapter list to cache using atomic writes.
+    pub async fn set_chapters(&self, entry: &ChapterListCacheEntry) -> Result<()> {
+        let path = self.chapter_list_path(&entry.feed_id, &entry.book_id);
+
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
                 .map_err(|e| Error::Storage {
-                    kind: StorageKind::ReadingProgress,
+                    kind: StorageKind::ChapterCache,
                     operation: StorageOperation::CreateDir,
                     message: e.to_string(),
                 })?;
         }
 
-        let content = toml::to_string(file)
+        let content = toml::to_string(entry)
             .map_err(|e| Error::Format {
-                kind: FormatKind::ReadingProgress,
+                kind: FormatKind::ChapterCache,
                 operation: FormatOperation::Serialize,
                 message: e.to_string(),
             })?;
-        write_atomic(&path, &content).await?;
+        write_atomic(&path, &content)
+            .await
+            .map_err(|e| Error::Storage {
+                kind: StorageKind::ChapterCache,
+                operation: StorageOperation::Write,
+                message: e.to_string(),
+            })?;
+
+        tracing::debug!(
+            feed_id = %entry.feed_id,
+            book_id = %entry.book_id,
+            chapters = entry.chapters.len(),
+            "cached chapter list"
+        );
+
+        Ok(())
+    }
+
+    /// Clear cached chapter list for a specific book under a feed.
+    pub async fn clear_chapters(&self, feed_id: &str, book_id: &str) -> Result<()> {
+        let path = self.chapter_list_path(feed_id, book_id);
+        if path.exists() {
+            tokio::fs::remove_file(&path)
+                .await
+                .map_err(|e| Error::Storage {
+                    kind: StorageKind::ChapterCache,
+                    operation: StorageOperation::RemoveFile,
+                    message: e.to_string(),
+                })?;
+        }
+
+        tracing::debug!(feed_id = %feed_id, book_id = %book_id, "cleared chapter list cache");
         Ok(())
     }
 
@@ -109,11 +205,13 @@ impl CacheStore {
                 Ok(entry) => {
                     if entry.schema_version != CACHE_SCHEMA_VERSION {
                         return Err(Error::CacheSchemaMismatch {
-                            feed_id: feed_id.to_string(),
-                            book_id: book_id.to_string(),
-                            chapter_id: chapter_id.to_string(),
-                            cached_version: entry.schema_version,
-                            expected_version: CACHE_SCHEMA_VERSION,
+                            details: Box::new(CacheSchemaMismatchError {
+                                feed_id: feed_id.to_string(),
+                                book_id: book_id.to_string(),
+                                chapter_id: chapter_id.to_string(),
+                                cached_version: entry.schema_version,
+                                expected_version: CACHE_SCHEMA_VERSION,
+                            }),
                         });
                     }
                     if entry.feed_id != feed_id
@@ -121,12 +219,14 @@ impl CacheStore {
                         || entry.chapter_id != chapter_id
                     {
                         return Err(Error::CacheKeyMismatch {
-                            expected_feed_id: feed_id.to_string(),
-                            expected_book_id: book_id.to_string(),
-                            expected_chapter_id: chapter_id.to_string(),
-                            actual_feed_id: entry.feed_id,
-                            actual_book_id: entry.book_id,
-                            actual_chapter_id: entry.chapter_id,
+                            details: Box::new(CacheKeyMismatchError {
+                                expected_feed_id: feed_id.to_string(),
+                                expected_book_id: book_id.to_string(),
+                                expected_chapter_id: chapter_id.to_string(),
+                                actual_feed_id: entry.feed_id,
+                                actual_book_id: entry.book_id,
+                                actual_chapter_id: entry.chapter_id,
+                            }),
                         });
                     }
                     tracing::debug!(
@@ -212,19 +312,20 @@ impl CacheStore {
                     operation: StorageOperation::RemoveFile,
                     message: e.to_string(),
                 })?;
-            tracing::debug!(
-                feed_id = %feed_id,
-                book_id = %book_id,
-                chapter_id = %chapter_id,
-                "cleared chapter cache"
-            );
         }
+
+        tracing::debug!(
+            feed_id = %feed_id,
+            book_id = %book_id,
+            chapter_id = %chapter_id,
+            "cleared chapter cache"
+        );
         Ok(())
     }
 
     /// Clear all chapter cache for a specific book under a feed.
     pub async fn clear_book(&self, feed_id: &str, book_id: &str) -> Result<()> {
-        let book_dir = self.cache_dir.join(feed_id).join(book_id);
+        let book_dir = self.book_dir(feed_id, book_id);
         if book_dir.exists() {
             tokio::fs::remove_dir_all(&book_dir)
                 .await
@@ -233,18 +334,19 @@ impl CacheStore {
                     operation: StorageOperation::RemoveDir,
                     message: e.to_string(),
                 })?;
-            tracing::debug!(
-                feed_id = %feed_id,
-                book_id = %book_id,
-                "cleared book cache"
-            );
         }
+
+        tracing::debug!(
+            feed_id = %feed_id,
+            book_id = %book_id,
+            "cleared book cache"
+        );
         Ok(())
     }
 
     /// Clear all cache for a feed.
     pub async fn clear_feed(&self, feed_id: &str) -> Result<()> {
-        let feed_dir = self.cache_dir.join(feed_id);
+        let feed_dir = self.feed_dir(feed_id);
         if feed_dir.exists() {
             tokio::fs::remove_dir_all(&feed_dir)
                 .await
@@ -253,41 +355,15 @@ impl CacheStore {
                     operation: StorageOperation::RemoveDir,
                     message: e.to_string(),
                 })?;
-            tracing::debug!(feed_id = %feed_id, "cleared feed cache");
         }
+
+        tracing::debug!(feed_id = %feed_id, "cleared feed cache");
         Ok(())
     }
 
     /// Get cache directory path (useful for testing/management).
     pub fn cache_dir(&self) -> &PathBuf {
         &self.cache_dir
-    }
-
-    pub async fn get_reading_progress(
-        &self,
-        feed_id: &str,
-        book_id: &str,
-    ) -> Result<Option<ReadingProgress>> {
-        let file = self.load_progress_file().await?;
-        Ok(file
-            .entries
-            .into_iter()
-            .find(|entry| entry.feed_id == feed_id && entry.book_id == book_id))
-    }
-
-    pub async fn set_reading_progress(&self, progress: ReadingProgress) -> Result<()> {
-        let mut file = self.load_progress_file().await?;
-        if let Some(existing) = file
-            .entries
-            .iter_mut()
-            .find(|entry| entry.feed_id == progress.feed_id && entry.book_id == progress.book_id)
-        {
-            *existing = progress;
-        } else {
-            file.entries.push(progress);
-        }
-
-        self.save_progress_file(&file).await
     }
 }
 
@@ -355,29 +431,44 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_set_and_get_reading_progress() {
+    async fn test_cache_chapter_list_roundtrip() {
         let temp_dir = TempDir::new().unwrap();
         let store = CacheStore::new(temp_dir.path());
 
-        let progress = ReadingProgress {
-            feed_id: "feed-a".to_string(),
-            book_id: "book-1".to_string(),
-            chapter_id: "chapter-10".to_string(),
-            paragraph_index: 12,
-            scroll_offset: 328.5,
-            updated_at_ms: 1_712_345_678_000,
-        };
+        let entry = ChapterListCacheEntry::new(
+            "feed-a".to_string(),
+            "book-1".to_string(),
+            vec![],
+        );
 
-        store.set_reading_progress(progress.clone()).await.unwrap();
+        store.set_chapters(&entry).await.unwrap();
 
         let loaded = store
-            .get_reading_progress("feed-a", "book-1")
+            .get_chapters("feed-a", "book-1")
             .await
             .unwrap()
-            .expect("expected stored progress");
+            .expect("expected stored chapter list");
 
-        assert_eq!(loaded.chapter_id, "chapter-10");
-        assert_eq!(loaded.paragraph_index, 12);
+        assert_eq!(loaded.feed_id, "feed-a");
+        assert_eq!(loaded.book_id, "book-1");
+    }
+
+    #[tokio::test]
+    async fn test_clear_chapters() {
+        let temp_dir = TempDir::new().unwrap();
+        let store = CacheStore::new(temp_dir.path());
+
+        let entry = ChapterListCacheEntry::new(
+            "feed-a".to_string(),
+            "book-1".to_string(),
+            vec![],
+        );
+
+        store.set_chapters(&entry).await.unwrap();
+        assert!(store.get_chapters("feed-a", "book-1").await.unwrap().is_some());
+
+        store.clear_chapters("feed-a", "book-1").await.unwrap();
+        assert!(store.get_chapters("feed-a", "book-1").await.unwrap().is_none());
     }
 
     #[tokio::test]

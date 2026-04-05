@@ -32,11 +32,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   GoRoute(
                     path: 'search',
                     name: 'bookshelf-search',
+                    parentNavigatorKey: _rootNavigatorKey,
                     builder: (context, state) => const SearchPage(),
                     routes: [
                       GoRoute(
                         path: 'book',
                         name: 'bookshelf-book-detail',
+                        parentNavigatorKey: _rootNavigatorKey,
                         builder: (context, state) {
                           final feedId =
                               state.uri.queryParameters['feedId'] ?? '';
@@ -48,6 +50,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                           GoRoute(
                             path: 'read',
                             name: 'bookshelf-reader',
+                            parentNavigatorKey: _rootNavigatorKey,
                             builder: (context, state) {
                               final feedId =
                                   state.uri.queryParameters['feedId'] ?? '';

@@ -5,12 +5,12 @@ use tokio_stream::StreamExt;
 
 use crate::error::Result;
 use crate::feed::{Feed, FeedBookshelfSupport, FeedMeta, FeedStream};
-use crate::model::Paragraph;
+use crate::model::{ChapterInfo, Paragraph};
 
 pub mod models;
 pub mod storage;
 
-pub use models::{CACHE_SCHEMA_VERSION, ChapterCacheEntry, ReadingProgress};
+pub use models::{CACHE_SCHEMA_VERSION, ChapterCacheEntry, ChapterListCacheEntry};
 pub use storage::CacheStore;
 
 /// A proxy feed that wraps any [`Feed`] and adds caching for chapter content.
@@ -20,7 +20,7 @@ pub use storage::CacheStore;
 /// - If cache hit: returns cached paragraphs as a stream (no network call)
 /// - If cache miss: calls inner feed, streams paragraphs, then persists to cache on completion
 ///
-/// **Other methods** (search, book_info, chapters) are passed through without caching.
+/// **Other methods** (search, book_info) are passed through without caching.
 ///
 /// # Example
 ///
@@ -194,6 +194,102 @@ impl<F: Feed> CachedFeed<F> {
             }
         })
     }
+
+    fn cached_chapters<'a>(&'a self, book_id: &'a str) -> FeedStream<'a, ChapterInfo> {
+        let feed_id = self.inner.meta().id.clone();
+        let book_id_owned = book_id.to_string();
+        let cache_store = self.cache_store.clone();
+        let inner = self.inner.clone();
+
+        Box::pin(stream! {
+            match cache_store.get_chapters(&feed_id, &book_id_owned).await {
+                Ok(Some(entry)) => {
+                    tracing::info!(
+                        feed_id = %feed_id,
+                        book_id = %book_id_owned,
+                        chapters = entry.chapters.len(),
+                        "cache hit for chapter list"
+                    );
+                    for chapter in entry.chapters {
+                        yield Ok(chapter);
+                    }
+                    return;
+                }
+                Ok(None) => {
+                    tracing::debug!(
+                        feed_id = %feed_id,
+                        book_id = %book_id_owned,
+                        "chapter list cache miss, fetching from inner feed"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        feed_id = %feed_id,
+                        book_id = %book_id_owned,
+                        error = %e,
+                        "failed to read chapter list cache, clearing broken cache and falling back to inner feed"
+                    );
+                    if let Err(clear_error) = cache_store.clear_chapters(&feed_id, &book_id_owned).await {
+                        tracing::warn!(
+                            feed_id = %feed_id,
+                            book_id = %book_id_owned,
+                            error = %clear_error,
+                            "failed to clear broken chapter list cache"
+                        );
+                    }
+                }
+            }
+
+            let mut chapters = Vec::new();
+            let mut stream = Box::pin(inner.chapters(&book_id_owned));
+
+            while let Some(result) = stream.next().await {
+                match result {
+                    Ok(chapter) => {
+                        chapters.push(chapter.clone());
+                        yield Ok(chapter);
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            feed_id = %feed_id,
+                            book_id = %book_id_owned,
+                            error = %e,
+                            "error fetching chapter list, not caching"
+                        );
+                        yield Err(e);
+                        return;
+                    }
+                }
+            }
+
+            let entry = ChapterListCacheEntry::new(feed_id.clone(), book_id_owned.clone(), chapters);
+            match cache_store.set_chapters(&entry).await {
+                Ok(_) => {
+                    tracing::debug!(
+                        feed_id = %feed_id,
+                        book_id = %book_id_owned,
+                        "successfully cached chapter list"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        feed_id = %feed_id,
+                        book_id = %book_id_owned,
+                        error = %e,
+                        "failed to cache chapter list, clearing chapter list cache entry"
+                    );
+                    if let Err(clear_error) = cache_store.clear_chapters(&feed_id, &book_id_owned).await {
+                        tracing::warn!(
+                            feed_id = %feed_id,
+                            book_id = %book_id_owned,
+                            error = %clear_error,
+                            "failed to clear chapter list cache after write failure"
+                        );
+                    }
+                }
+            }
+        })
+    }
 }
 
 impl<F: Feed> Feed for CachedFeed<F> {
@@ -208,8 +304,7 @@ impl<F: Feed> Feed for CachedFeed<F> {
     }
 
     fn chapters<'a>(&'a self, book_id: &'a str) -> FeedStream<'a, crate::model::ChapterInfo> {
-        // Chapter lists are not cached (may be updated frequently)
-        self.inner.chapters(book_id)
+        self.cached_chapters(book_id)
     }
 
     fn paragraphs<'a>(&'a self, book_id: &'a str, chapter_id: &'a str) -> FeedStream<'a, Paragraph> {

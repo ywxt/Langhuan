@@ -20,132 +20,138 @@ class BookshelfPage extends ConsumerWidget {
 
     return Scaffold(
       body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            // ── Title ──────────────────────────────────────────────────
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(
-                LanghuanTheme.spaceLg,
-                LanghuanTheme.spaceLg,
-                LanghuanTheme.spaceLg,
-                LanghuanTheme.spaceMd,
-              ),
-              sliver: SliverToBoxAdapter(
-                child: Text(
-                  l10n.bookshelfTitle,
-                  style: theme.textTheme.headlineLarge,
-                ),
-              ),
+        child: RefreshIndicator(
+          onRefresh: () => ref.read(bookshelfProvider.notifier).load(),
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
             ),
-
-            // ── Search bar (tap to navigate) ───────────────────────────
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: LanghuanTheme.spaceLg,
-              ),
-              sliver: SliverToBoxAdapter(
-                child: SearchBar(
-                  hintText: l10n.bookshelfSearchHint,
-                  leading: Icon(
-                    Icons.search,
-                    color: theme.colorScheme.onSurfaceVariant,
+            slivers: [
+              // ── Title ──────────────────────────────────────────────────
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(
+                  LanghuanTheme.spaceLg,
+                  LanghuanTheme.spaceLg,
+                  LanghuanTheme.spaceLg,
+                  LanghuanTheme.spaceMd,
+                ),
+                sliver: SliverToBoxAdapter(
+                  child: Text(
+                    l10n.bookshelfTitle,
+                    style: theme.textTheme.headlineLarge,
                   ),
-                  onTap: () => context.push('/bookshelf/search'),
-                  focusNode: AlwaysDisabledFocusNode(),
                 ),
               ),
-            ),
 
-            const SliverToBoxAdapter(
-              child: SizedBox(height: LanghuanTheme.spaceLg),
-            ),
-
-            if (state.isLoading && state.items.isEmpty)
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (state.hasError && state.items.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: EmptyState(
-                  icon: Icons.error_outline,
-                  title: l10n.bookshelfLoadError,
-                  subtitle: state.error.toString(),
-                ),
-              )
-            else if (state.items.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: EmptyState(
-                  icon: Icons.auto_stories_outlined,
-                  title: l10n.bookshelfEmpty,
-                  subtitle: l10n.bookshelfEmptyHint,
-                ),
-              )
-            else
+              // ── Search bar (tap to navigate) ───────────────────────────
               SliverPadding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: LanghuanTheme.spaceLg,
                 ),
-                sliver: SliverList.separated(
-                  itemBuilder: (context, index) {
-                    final item = state.items[index];
-                    return Material(
-                      color: theme.colorScheme.surfaceContainer,
-                      borderRadius: LanghuanTheme.borderRadiusMd,
-                      child: ListTile(
-                        onTap: () {
-                          context.pushNamed(
-                            'bookshelf-book-detail',
-                            queryParameters: {
-                              'feedId': item.feedId,
-                              'bookId': item.sourceBookId,
-                            },
-                          );
-                        },
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: LanghuanTheme.spaceMd,
-                          vertical: LanghuanTheme.spaceXs,
-                        ),
-                        leading: ClipRRect(
-                          borderRadius: LanghuanTheme.borderRadiusSm,
-                          child: SizedBox(
-                            width: 44,
-                            height: 60,
-                            child: item.coverUrl == null
-                                ? const _SmallCoverPlaceholder()
-                                : Image.network(
-                                    item.coverUrl!,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, _, _) =>
-                                        const _SmallCoverPlaceholder(),
-                                  ),
-                          ),
-                        ),
-                        title: Text(
-                          item.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyLarge,
-                        ),
-                        subtitle: Text(
-                          item.author,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                  separatorBuilder: (_, _) =>
-                      const SizedBox(height: LanghuanTheme.spaceSm),
-                  itemCount: state.items.length,
+                sliver: SliverToBoxAdapter(
+                  child: SearchBar(
+                    hintText: l10n.bookshelfSearchHint,
+                    leading: Icon(
+                      Icons.search,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    onTap: () => context.push('/bookshelf/search'),
+                    focusNode: AlwaysDisabledFocusNode(),
+                  ),
                 ),
               ),
-          ],
+
+              const SliverToBoxAdapter(
+                child: SizedBox(height: LanghuanTheme.spaceLg),
+              ),
+
+              if (state.isLoading && state.items.isEmpty)
+                const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (state.hasError && state.items.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: EmptyState(
+                    icon: Icons.error_outline,
+                    title: l10n.bookshelfLoadError,
+                    subtitle: state.error.toString(),
+                  ),
+                )
+              else if (state.items.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: EmptyState(
+                    icon: Icons.auto_stories_outlined,
+                    title: l10n.bookshelfEmpty,
+                    subtitle: l10n.bookshelfEmptyHint,
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: LanghuanTheme.spaceLg,
+                  ),
+                  sliver: SliverList.separated(
+                    itemBuilder: (context, index) {
+                      final item = state.items[index];
+                      return Material(
+                        color: theme.colorScheme.surfaceContainer,
+                        borderRadius: LanghuanTheme.borderRadiusMd,
+                        child: ListTile(
+                          onTap: () {
+                            context.pushNamed(
+                              'bookshelf-book-detail',
+                              queryParameters: {
+                                'feedId': item.feedId,
+                                'bookId': item.sourceBookId,
+                              },
+                            );
+                          },
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: LanghuanTheme.spaceMd,
+                            vertical: LanghuanTheme.spaceXs,
+                          ),
+                          leading: ClipRRect(
+                            borderRadius: LanghuanTheme.borderRadiusSm,
+                            child: SizedBox(
+                              width: 44,
+                              height: 60,
+                              child: item.coverUrl == null
+                                  ? const _SmallCoverPlaceholder()
+                                  : Image.network(
+                                      item.coverUrl!,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) =>
+                                          const _SmallCoverPlaceholder(),
+                                    ),
+                            ),
+                          ),
+                          title: Text(
+                            item.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyLarge,
+                          ),
+                          subtitle: Text(
+                            item.author,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    separatorBuilder: (_, _) =>
+                        const SizedBox(height: LanghuanTheme.spaceSm),
+                    itemCount: state.items.length,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

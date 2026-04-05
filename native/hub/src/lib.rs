@@ -91,36 +91,23 @@ fn localize_error(e: &langhuan::error::Error) -> String {
             message = message
         )
         .to_string(),
-        Error::CacheSchemaMismatch {
-            feed_id,
-            book_id,
-            chapter_id,
-            cached_version,
-            expected_version,
-        } => t!(
+        Error::CacheSchemaMismatch { details } => t!(
             "error.cache_schema_mismatch",
-            feed_id = feed_id,
-            book_id = book_id,
-            chapter_id = chapter_id,
-            cached_version = cached_version,
-            expected_version = expected_version
+            feed_id = details.feed_id,
+            book_id = details.book_id,
+            chapter_id = details.chapter_id,
+            cached_version = details.cached_version,
+            expected_version = details.expected_version
         )
         .to_string(),
-        Error::CacheKeyMismatch {
-            expected_feed_id,
-            expected_book_id,
-            expected_chapter_id,
-            actual_feed_id,
-            actual_book_id,
-            actual_chapter_id,
-        } => t!(
+        Error::CacheKeyMismatch { details } => t!(
             "error.cache_key_mismatch",
-            expected_feed_id = expected_feed_id,
-            expected_book_id = expected_book_id,
-            expected_chapter_id = expected_chapter_id,
-            actual_feed_id = actual_feed_id,
-            actual_book_id = actual_book_id,
-            actual_chapter_id = actual_chapter_id,
+            expected_feed_id = details.expected_feed_id,
+            expected_book_id = details.expected_book_id,
+            expected_chapter_id = details.expected_chapter_id,
+            actual_feed_id = details.actual_feed_id,
+            actual_book_id = details.actual_book_id,
+            actual_chapter_id = details.actual_chapter_id,
         )
         .to_string(),
     }

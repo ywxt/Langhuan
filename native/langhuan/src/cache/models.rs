@@ -1,21 +1,44 @@
 use serde::{Deserialize, Serialize};
 
+use crate::model::ChapterInfo;
 use crate::model::Paragraph;
 
 pub const CACHE_SCHEMA_VERSION: u32 = 1;
 
-/// Reading progress entry for a book chapter
+/// Cached chapter list with metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReadingProgress {
+pub struct ChapterListCacheEntry {
     pub feed_id: String,
     pub book_id: String,
-    pub chapter_id: String,
-    pub paragraph_index: usize,
-    pub scroll_offset: f64,
-    pub updated_at_ms: i64,
+    pub chapters: Vec<ChapterInfo>,
+    pub cached_at_ms: i64,
+    pub schema_version: u32,
 }
 
-/// Cached chapter content with metadata
+impl ChapterListCacheEntry {
+    /// Create a new chapter-list cache entry with current timestamp.
+    pub fn new(
+        feed_id: String,
+        book_id: String,
+        chapters: Vec<ChapterInfo>,
+    ) -> Self {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+
+        Self {
+            feed_id,
+            book_id,
+            chapters,
+            cached_at_ms: now_ms,
+            schema_version: CACHE_SCHEMA_VERSION,
+        }
+    }
+}
+
+/// Cached chapter content with metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChapterCacheEntry {
     pub feed_id: String,
@@ -27,7 +50,7 @@ pub struct ChapterCacheEntry {
 }
 
 impl ChapterCacheEntry {
-    /// Create a new cache entry with current timestamp
+    /// Create a new chapter-content cache entry with current timestamp.
     pub fn new(
         feed_id: String,
         book_id: String,
@@ -47,22 +70,6 @@ impl ChapterCacheEntry {
             paragraphs,
             cached_at_ms: now_ms,
             schema_version: CACHE_SCHEMA_VERSION,
-        }
-    }
-}
-
-/// File format for progress cache (TOML-compatible structure)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProgressFile {
-    pub schema_version: u32,
-    pub entries: Vec<ReadingProgress>,
-}
-
-impl Default for ProgressFile {
-    fn default() -> Self {
-        Self {
-            schema_version: CACHE_SCHEMA_VERSION,
-            entries: Vec::new(),
         }
     }
 }

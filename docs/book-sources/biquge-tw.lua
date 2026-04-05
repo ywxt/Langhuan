@@ -1,7 +1,7 @@
 -- ==Feed==
 -- @id           biquge-tw
 -- @name         筆趣閣（biquge.tw）
--- @version      1.1.0
+-- @version      1.1.1
 -- @author       GitHub Copilot
 -- @description  適配 biquge.tw 的書源，支持搜尋、詳情、目錄、正文（含多頁章節）
 -- @base_url     https://www.biquge.tw
@@ -351,9 +351,12 @@ local function parse_paragraph_items(resp)
             end
 
             if #items == 0 then
-                local raw = body:match('<div[^>]-id=["\']chaptercontent["\'][^>]*>(.-)</div>')
+                -- Lua pattern '.' does not match newlines, so normalize first
+                -- to make fallback extraction work for pretty-printed HTML.
+                local compact_body = body:gsub("\r", " "):gsub("\n", " ")
+                local raw = compact_body:match('<div[^>]-id=["\']chaptercontent["\'][^>]*>(.-)</div>')
                 if not raw then
-                    raw = body:match('<div[^>]-id=["\']content["\'][^>]*>(.-)</div>')
+                    raw = compact_body:match('<div[^>]-id=["\']content["\'][^>]*>(.-)</div>')
                 end
                 if raw then
                     local text = clean_text(raw)
@@ -455,10 +458,28 @@ return {
     },
 
     paragraphs = {
-        request = function(chapter_id, cursor)
-            local book_id, ch_id = split_chapter_composite_id(chapter_id)
-            if not book_id or not ch_id then
-                error("invalid chapter id, expected 'book_id/chapter_id'")
+        request = function(book_id, chapter_id, cursor)
+            local req_book_id = tostring(book_id or "")
+            local req_chapter_id = tostring(chapter_id or "")
+
+            local parsed_book_id, parsed_ch_id = split_chapter_composite_id(req_chapter_id)
+            if parsed_book_id and parsed_ch_id then
+                req_book_id = parsed_book_id
+                req_chapter_id = parsed_ch_id
+            end
+
+            if req_book_id == "" or req_chapter_id == "" then
+                -- Backward compatibility: some callers may pass only one
+                -- composite chapter id as the first argument.
+                local fallback_book_id, fallback_ch_id = split_chapter_composite_id(tostring(book_id or ""))
+                if fallback_book_id and fallback_ch_id then
+                    req_book_id = fallback_book_id
+                    req_chapter_id = fallback_ch_id
+                end
+            end
+
+            if req_book_id == "" or req_chapter_id == "" then
+                error("invalid chapter id, expected (book_id, chapter_id) or 'book_id/chapter_id'")
             end
 
             local suffix = ""
@@ -467,7 +488,7 @@ return {
             end
 
             return {
-                url = meta.base_url .. "/book/" .. book_id .. "/" .. ch_id .. suffix .. ".html",
+                url = meta.base_url .. "/book/" .. req_book_id .. "/" .. req_chapter_id .. suffix .. ".html",
                 method = "GET",
                 headers = get_headers(),
             }

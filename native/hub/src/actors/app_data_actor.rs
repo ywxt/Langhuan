@@ -8,6 +8,7 @@ use crate::signals::{
 };
 
 use super::bookshelf_actor::BookshelfActor;
+use super::reading_progress_actor::ReadingProgressActor;
 use super::registry_actor::RegistryActor;
 
 pub struct InitializeAppDataDirectory {
@@ -17,6 +18,7 @@ pub struct InitializeAppDataDirectory {
 pub struct AppDataActor {
     registry_addr: Address<RegistryActor>,
     bookshelf_addr: Address<BookshelfActor>,
+    reading_progress_addr: Address<ReadingProgressActor>,
     _owned_tasks: JoinSet<()>,
 }
 
@@ -27,21 +29,25 @@ impl AppDataActor {
         self_addr: Address<Self>,
         registry_addr: Address<RegistryActor>,
         bookshelf_addr: Address<BookshelfActor>,
+        reading_progress_addr: Address<ReadingProgressActor>,
     ) -> Self {
         let mut _owned_tasks = JoinSet::new();
         _owned_tasks.spawn(Self::listen_to_set_directory(self_addr));
         Self {
             registry_addr,
             bookshelf_addr,
+            reading_progress_addr,
             _owned_tasks,
         }
     }
 
     async fn set_data_directory(&mut self, req: SetAppDataDirectory) -> AppDataDirectorySet {
+        let app_data_path = req.path;
+
         let registry_result = match self
             .registry_addr
             .send(InitializeAppDataDirectory {
-                path: req.path.clone(),
+                path: app_data_path.clone(),
             })
             .await
         {
@@ -62,7 +68,31 @@ impl AppDataActor {
 
         match self
             .bookshelf_addr
-            .send(InitializeAppDataDirectory { path: req.path })
+            .send(InitializeAppDataDirectory {
+                path: app_data_path.clone(),
+            })
+            .await
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(message)) => {
+                return AppDataDirectorySet {
+                    outcome: AppDataDirectoryOutcome::Error { message },
+                };
+            }
+            Err(_) => {
+                return AppDataDirectorySet {
+                    outcome: AppDataDirectoryOutcome::Error {
+                        message: t!("error.bookshelf_unavailable").to_string(),
+                    },
+                };
+            }
+        }
+
+        match self
+            .reading_progress_addr
+            .send(InitializeAppDataDirectory {
+                path: app_data_path,
+            })
             .await
         {
             Ok(Ok(())) => AppDataDirectorySet {
@@ -78,7 +108,7 @@ impl AppDataActor {
             },
             Err(_) => AppDataDirectorySet {
                 outcome: AppDataDirectoryOutcome::Error {
-                    message: t!("error.bookshelf_unavailable").to_string(),
+                    message: t!("error.app_data_dir_not_set").to_string(),
                 },
             },
         }
@@ -122,13 +152,22 @@ mod tests {
         let bookshelf_addr = bookshelf_context.address();
         let app_data_context = Context::new();
         let app_data_addr = app_data_context.address();
+        let reading_progress_context = Context::new();
+        let reading_progress_addr = reading_progress_context.address();
 
         let registry_actor = RegistryActor::new(registry_addr.clone(), ScriptEngine::new());
         let bookshelf_actor = BookshelfActor::new(bookshelf_addr.clone(), registry_addr.clone());
-        let app_data_actor = AppDataActor::new(app_data_addr, registry_addr, bookshelf_addr);
+        let reading_progress_actor = ReadingProgressActor::new(reading_progress_addr.clone());
+        let app_data_actor = AppDataActor::new(
+            app_data_addr,
+            registry_addr,
+            bookshelf_addr,
+            reading_progress_addr,
+        );
 
         spawn(registry_context.run(registry_actor));
         spawn(bookshelf_context.run(bookshelf_actor));
+        spawn(reading_progress_context.run(reading_progress_actor));
 
         let mut actor = app_data_actor;
         let result = actor
@@ -144,6 +183,7 @@ mod tests {
         assert!(dir.path().join("scripts").is_dir());
         assert!(dir.path().join("scripts/registry.toml").is_file());
         assert!(dir.path().join("bookshelf").is_dir());
+        assert!(dir.path().join("progress").is_dir());
         Ok(())
     }
 
@@ -159,13 +199,22 @@ mod tests {
         let bookshelf_addr = bookshelf_context.address();
         let app_data_context = Context::new();
         let app_data_addr = app_data_context.address();
+        let reading_progress_context = Context::new();
+        let reading_progress_addr = reading_progress_context.address();
 
         let registry_actor = RegistryActor::new(registry_addr.clone(), ScriptEngine::new());
         let bookshelf_actor = BookshelfActor::new(bookshelf_addr.clone(), registry_addr.clone());
-        let app_data_actor = AppDataActor::new(app_data_addr, registry_addr, bookshelf_addr);
+        let reading_progress_actor = ReadingProgressActor::new(reading_progress_addr.clone());
+        let app_data_actor = AppDataActor::new(
+            app_data_addr,
+            registry_addr,
+            bookshelf_addr,
+            reading_progress_addr,
+        );
 
         spawn(registry_context.run(registry_actor));
         spawn(bookshelf_context.run(bookshelf_actor));
+        spawn(reading_progress_context.run(reading_progress_actor));
 
         let mut actor = app_data_actor;
         let result = actor

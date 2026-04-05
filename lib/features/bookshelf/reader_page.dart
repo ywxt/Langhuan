@@ -1,6 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'dart:async';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
@@ -9,6 +10,8 @@ import '../../shared/widgets/error_state.dart';
 import '../../src/bindings/signals/signals.dart';
 import '../feeds/feed_providers.dart';
 import '../feeds/feed_service.dart';
+
+enum _ReaderMode { verticalScroll, horizontalPaging }
 
 class ReaderPage extends ConsumerStatefulWidget {
   const ReaderPage({
@@ -29,17 +32,29 @@ class ReaderPage extends ConsumerStatefulWidget {
 class _ReaderPageState extends ConsumerState<ReaderPage> {
   static const double _swipeVelocityThreshold = 220;
   static const Duration _progressSaveDebounce = Duration(seconds: 1);
+  static const Duration _controlsAutoHideDelay = Duration(seconds: 3);
 
   String? _currentChapterId;
   bool _isSwitchingChapter = false;
-  bool _restoredScroll = false;
+  bool _restoredPosition = false;
+  bool _showBottomBar = false;
+
+  _ReaderMode _readerMode = _ReaderMode.verticalScroll;
+
+  int _horizontalParagraphIndex = 0;
+  List<ParagraphContent> _latestContentItems = const [];
   late final ScrollController _scrollController;
+  late final PageController _pageController;
+  late final ReadingProgressNotifier _readingProgressNotifier;
   Timer? _saveTimer;
+  Timer? _controlsTimer;
 
   @override
   void initState() {
     super.initState();
+    _readingProgressNotifier = ref.read(readingProgressProvider.notifier);
     _scrollController = ScrollController()..addListener(_onScroll);
+    _pageController = PageController();
     _currentChapterId = widget.chapterId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -50,24 +65,61 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   @override
   void dispose() {
     _saveTimer?.cancel();
-    unawaited(_saveReadingProgress());
+    _controlsTimer?.cancel();
+    unawaited(_saveReadingProgress(updateProviderState: false));
     _scrollController
       ..removeListener(_onScroll)
       ..dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
   void _onScroll() {
+    if (_readerMode != _ReaderMode.verticalScroll) return;
     if (!_scrollController.hasClients) return;
+    _scheduleSaveProgress();
+  }
+
+  void _onPageChanged(int index) {
+    if (_readerMode != _ReaderMode.horizontalPaging) return;
+    _horizontalParagraphIndex = index;
+    _scheduleSaveProgress();
+  }
+
+  void _scheduleSaveProgress() {
     _saveTimer?.cancel();
     _saveTimer = Timer(_progressSaveDebounce, () {
       if (!mounted) return;
-      unawaited(_saveReadingProgress());
+      unawaited(_saveReadingProgress(updateProviderState: true));
     });
   }
 
+  void _toggleBottomBar() {
+    setState(() {
+      _showBottomBar = !_showBottomBar;
+    });
+
+    _controlsTimer?.cancel();
+    if (_showBottomBar) {
+      _controlsTimer = Timer(_controlsAutoHideDelay, () {
+        if (!mounted) return;
+        setState(() {
+          _showBottomBar = false;
+        });
+      });
+    }
+  }
+
   int _estimateParagraphIndex(int totalItems) {
-    if (!_scrollController.hasClients || totalItems <= 1) {
+    if (totalItems <= 1) {
+      return 0;
+    }
+
+    if (_readerMode == _ReaderMode.horizontalPaging) {
+      return _horizontalParagraphIndex.clamp(0, totalItems - 1);
+    }
+
+    if (!_scrollController.hasClients) {
       return 0;
     }
 
@@ -80,27 +132,37 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     return (ratio * (totalItems - 1)).round();
   }
 
-  Future<void> _saveReadingProgress() async {
+  Future<void> _saveReadingProgress({required bool updateProviderState}) async {
     final chapterId = _currentChapterId;
     if (chapterId == null || chapterId.isEmpty) {
       return;
     }
 
-    final items = ref.read(chapterContentProvider).items;
+    final items = _latestContentItems;
     final paragraphIndex = _estimateParagraphIndex(items.length);
-    final scrollOffset = _scrollController.hasClients
-        ? _scrollController.offset
-        : 0.0;
+    final scrollOffset = _readerMode == _ReaderMode.verticalScroll
+        ? (_scrollController.hasClients ? _scrollController.offset : 0.0)
+        : paragraphIndex.toDouble();
 
-    await ref
-        .read(readingProgressProvider.notifier)
-        .save(
-          feedId: widget.feedId,
-          bookId: widget.bookId,
-          chapterId: chapterId,
-          paragraphIndex: paragraphIndex,
-          scrollOffset: scrollOffset,
-        );
+    if (updateProviderState) {
+      await _readingProgressNotifier.save(
+        feedId: widget.feedId,
+        bookId: widget.bookId,
+        chapterId: chapterId,
+        paragraphIndex: paragraphIndex,
+        scrollOffset: scrollOffset,
+      );
+      return;
+    }
+
+    await FeedService.instance.setReadingProgress(
+      feedId: widget.feedId,
+      bookId: widget.bookId,
+      chapterId: chapterId,
+      paragraphIndex: paragraphIndex,
+      scrollOffset: scrollOffset,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    );
   }
 
   Future<void> _ensureLoaded() async {
@@ -139,17 +201,75 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
           chapterId: chapterId,
         );
 
-    if (!_restoredScroll &&
-        progress != null &&
-        progress.chapterId == chapterId) {
-      _restoredScroll = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_scrollController.hasClients) return;
+    final currentItems = ref.read(chapterContentProvider).items;
+    _latestContentItems = currentItems;
+    _restoreReadingPosition(progress, currentItems.length, chapterId);
+  }
+
+  void _restoreReadingPosition(
+    ReadingProgressModel? progress,
+    int totalItems,
+    String chapterId,
+  ) {
+    if (_restoredPosition ||
+        progress == null ||
+        progress.chapterId != chapterId) {
+      return;
+    }
+
+    _restoredPosition = true;
+    final targetParagraph = progress.paragraphIndex.clamp(
+      0,
+      totalItems <= 0 ? 0 : totalItems - 1,
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_readerMode == _ReaderMode.horizontalPaging) {
+        _horizontalParagraphIndex = targetParagraph;
+        if (_pageController.hasClients) {
+          _pageController.jumpToPage(targetParagraph);
+        }
+      } else if (_scrollController.hasClients) {
         final maxExtent = _scrollController.position.maxScrollExtent;
         final target = progress.scrollOffset.clamp(0.0, maxExtent);
         _scrollController.jumpTo(target);
-      });
+      }
+    });
+  }
+
+  Future<void> _switchReaderMode(_ReaderMode nextMode, int totalItems) async {
+    if (nextMode == _readerMode) return;
+
+    if (_readerMode == _ReaderMode.verticalScroll) {
+      _horizontalParagraphIndex = _estimateParagraphIndex(totalItems);
     }
+
+    setState(() {
+      _readerMode = nextMode;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      if (_readerMode == _ReaderMode.horizontalPaging) {
+        final target = _horizontalParagraphIndex.clamp(
+          0,
+          totalItems <= 0 ? 0 : totalItems - 1,
+        );
+        _horizontalParagraphIndex = target;
+        if (_pageController.hasClients) {
+          _pageController.jumpToPage(target);
+        }
+      } else {
+        if (!_scrollController.hasClients || totalItems <= 1) return;
+        final ratio = _horizontalParagraphIndex / (totalItems - 1);
+        final target = _scrollController.position.maxScrollExtent * ratio;
+        _scrollController.jumpTo(
+          target.clamp(0.0, _scrollController.position.maxScrollExtent),
+        );
+      }
+    });
   }
 
   int _currentChapterIndex(List<ChapterInfoModel> chapters) {
@@ -186,8 +306,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
     final target = chapters[targetIndex];
 
-    await _saveReadingProgress();
-    _restoredScroll = false;
+    await _saveReadingProgress(updateProviderState: true);
+    _restoredPosition = false;
+    _horizontalParagraphIndex = 0;
 
     _isSwitchingChapter = true;
     setState(() {
@@ -204,6 +325,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
       if (_scrollController.hasClients) {
         _scrollController.jumpTo(0);
       }
+      if (_pageController.hasClients) {
+        _pageController.jumpToPage(0);
+      }
     } finally {
       _isSwitchingChapter = false;
     }
@@ -214,6 +338,10 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     DragEndDetails details,
     List<ChapterInfoModel> chapters,
   ) async {
+    if (_readerMode != _ReaderMode.verticalScroll) {
+      return;
+    }
+
     final v = details.primaryVelocity ?? 0;
     if (v.abs() < _swipeVelocityThreshold) return;
 
@@ -308,11 +436,154 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     return widgets;
   }
 
+  Widget _buildHorizontalPage(BuildContext context, ParagraphContent item) {
+    final theme = Theme.of(context);
+
+    Widget content;
+    if (item is ParagraphContentTitle) {
+      content = Text(
+        item.text,
+        style: theme.textTheme.headlineSmall,
+        textAlign: TextAlign.center,
+      );
+    } else if (item is ParagraphContentText) {
+      content = Text(
+        item.content,
+        style: theme.textTheme.bodyLarge?.copyWith(height: 1.8),
+      );
+    } else if (item is ParagraphContentImage) {
+      content = Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: LanghuanTheme.borderRadiusMd,
+            child: Image.network(
+              item.url,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return const AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              },
+              errorBuilder: (_, _, _) => const AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Center(child: Icon(Icons.broken_image_outlined)),
+              ),
+            ),
+          ),
+          if (item.alt != null && item.alt!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: LanghuanTheme.spaceSm),
+              child: Text(
+                item.alt!,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+        ],
+      );
+    } else {
+      content = const SizedBox.shrink();
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(
+        LanghuanTheme.spaceLg,
+        LanghuanTheme.spaceLg,
+        LanghuanTheme.spaceLg,
+        LanghuanTheme.space2xl,
+      ),
+      child: content,
+    );
+  }
+
+  Widget _buildBottomBar(
+    BuildContext context,
+    List<ChapterInfoModel> chapters,
+    int currentIdx,
+  ) {
+    final l10n = AppLocalizations.of(context);
+    final canGoPrev = currentIdx > 0;
+    final canGoNext = currentIdx >= 0 && currentIdx < chapters.length - 1;
+    final chapterProgress = chapters.isEmpty
+        ? 0.0
+        : ((currentIdx < 0 ? 0 : currentIdx + 1) / chapters.length).clamp(
+            0.0,
+            1.0,
+          );
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        color: Theme.of(context).colorScheme.surfaceContainer,
+        padding: const EdgeInsets.fromLTRB(
+          LanghuanTheme.spaceMd,
+          LanghuanTheme.spaceSm,
+          LanghuanTheme.spaceMd,
+          LanghuanTheme.spaceMd,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (chapters.isNotEmpty) ...[
+              Text(
+                l10n.readerChapterProgress(
+                  currentIdx < 0 ? 0 : currentIdx + 1,
+                  chapters.length,
+                ),
+                style: Theme.of(context).textTheme.labelMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: LanghuanTheme.spaceXs),
+              LinearProgressIndicator(value: chapterProgress),
+              const SizedBox(height: LanghuanTheme.spaceSm),
+            ],
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed:
+                        (chapters.isEmpty || !canGoPrev || _isSwitchingChapter)
+                        ? null
+                        : () =>
+                              _jumpToChapter(context, chapters, currentIdx - 1),
+                    icon: const Icon(Icons.chevron_left),
+                    label: Text(l10n.readerPrevChapter),
+                  ),
+                ),
+                const SizedBox(width: LanghuanTheme.spaceSm),
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed:
+                        (chapters.isEmpty || !canGoNext || _isSwitchingChapter)
+                        ? null
+                        : () =>
+                              _jumpToChapter(context, chapters, currentIdx + 1),
+                    iconAlignment: IconAlignment.end,
+                    icon: const Icon(Icons.chevron_right),
+                    label: Text(l10n.readerNextChapter),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final chaptersState = ref.watch(chaptersProvider);
     final contentState = ref.watch(chapterContentProvider);
+    _latestContentItems = contentState.items;
 
     if (widget.feedId.isEmpty ||
         widget.bookId.isEmpty ||
@@ -328,30 +599,28 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
     final chapters = chaptersState.items;
     final currentIdx = _currentChapterIndex(chapters);
-    final canGoPrev = currentIdx > 0;
-    final canGoNext = currentIdx >= 0 && currentIdx < chapters.length - 1;
     final chapterTitle = currentIdx >= 0
         ? chapters[currentIdx].title
         : l10n.readerTitle;
 
-    Widget body;
+    Widget contentBody;
     if (contentState.isLoading && contentState.items.isEmpty) {
-      body = const Center(child: CircularProgressIndicator());
+      contentBody = const Center(child: CircularProgressIndicator());
     } else if (contentState.hasError && contentState.items.isEmpty) {
-      body = ErrorState(
+      contentBody = ErrorState(
         title: l10n.readerLoadError,
         message: contentState.error.toString(),
         onRetry: () => ref.read(chapterContentProvider.notifier).retry(),
         retryLabel: l10n.bookDetailRetry,
       );
     } else if (contentState.items.isEmpty) {
-      body = EmptyState(
+      contentBody = EmptyState(
         icon: Icons.menu_book_outlined,
         title: l10n.readerEmpty,
       );
-    } else {
+    } else if (_readerMode == _ReaderMode.verticalScroll) {
       final paragraphWidgets = _buildParagraphs(context, contentState.items);
-      body = ListView.builder(
+      contentBody = ListView.builder(
         controller: _scrollController,
         padding: const EdgeInsets.fromLTRB(
           LanghuanTheme.spaceLg,
@@ -362,75 +631,60 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
         itemCount: paragraphWidgets.length,
         itemBuilder: (context, index) => paragraphWidgets[index],
       );
+    } else {
+      contentBody = PageView.builder(
+        controller: _pageController,
+        itemCount: contentState.items.length,
+        onPageChanged: _onPageChanged,
+        itemBuilder: (context, index) {
+          return _buildHorizontalPage(context, contentState.items[index]);
+        },
+      );
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(chapterTitle)),
-      body: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onHorizontalDragEnd: (d) => _onHorizontalDragEnd(context, d, chapters),
-        child: Column(
-          children: [
-            if (chapters.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: LanghuanTheme.spaceLg,
-                  vertical: LanghuanTheme.spaceSm,
-                ),
-                child: Text(
-                  l10n.readerChapterProgress(
-                    currentIdx < 0 ? 0 : currentIdx + 1,
-                    chapters.length,
-                  ),
-                  style: Theme.of(context).textTheme.labelMedium,
-                ),
+      appBar: AppBar(
+        title: Text(chapterTitle),
+        actions: [
+          PopupMenuButton<_ReaderMode>(
+            initialValue: _readerMode,
+            onSelected: (mode) =>
+                _switchReaderMode(mode, contentState.items.length),
+            itemBuilder: (context) => [
+              PopupMenuItem<_ReaderMode>(
+                value: _ReaderMode.verticalScroll,
+                child: const Text('上下滑動'),
               ),
-            Expanded(child: body),
-            SafeArea(
-              top: false,
-              child: Container(
-                color: Theme.of(context).colorScheme.surfaceContainer,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: LanghuanTheme.spaceMd,
-                  vertical: LanghuanTheme.spaceSm,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextButton.icon(
-                        onPressed:
-                            (chapters.isEmpty ||
-                                !canGoPrev ||
-                                _isSwitchingChapter)
-                            ? null
-                            : () => _jumpToChapter(
-                                context,
-                                chapters,
-                                currentIdx - 1,
-                              ),
-                        icon: const Icon(Icons.chevron_left),
-                        label: Text(l10n.readerPrevChapter),
-                      ),
-                    ),
-                    const SizedBox(width: LanghuanTheme.spaceSm),
-                    Expanded(
-                      child: TextButton.icon(
-                        onPressed:
-                            (chapters.isEmpty ||
-                                !canGoNext ||
-                                _isSwitchingChapter)
-                            ? null
-                            : () => _jumpToChapter(
-                                context,
-                                chapters,
-                                currentIdx + 1,
-                              ),
-                        iconAlignment: IconAlignment.end,
-                        icon: const Icon(Icons.chevron_right),
-                        label: Text(l10n.readerNextChapter),
-                      ),
-                    ),
-                  ],
+              PopupMenuItem<_ReaderMode>(
+                value: _ReaderMode.horizontalPaging,
+                child: const Text('左右翻頁'),
+              ),
+            ],
+            icon: const Icon(Icons.swap_horiz),
+          ),
+        ],
+      ),
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: _toggleBottomBar,
+        onHorizontalDragEnd: (d) => _onHorizontalDragEnd(context, d, chapters),
+        child: Stack(
+          children: [
+            Positioned.fill(child: contentBody),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: IgnorePointer(
+                ignoring: !_showBottomBar,
+                child: AnimatedSlide(
+                  duration: const Duration(milliseconds: 180),
+                  offset: _showBottomBar ? Offset.zero : const Offset(0, 1),
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 180),
+                    opacity: _showBottomBar ? 1 : 0,
+                    child: _buildBottomBar(context, chapters, currentIdx),
+                  ),
                 ),
               ),
             ),

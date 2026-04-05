@@ -5,6 +5,7 @@
 mod app_data_actor;
 mod bookshelf_actor;
 mod locale_actor;
+mod reading_progress_actor;
 mod registry_actor;
 mod stream_actor;
 
@@ -13,6 +14,7 @@ use bookshelf_actor::BookshelfActor;
 use langhuan::script::runtime::ScriptEngine;
 use locale_actor::LocaleActor;
 use messages::prelude::Context;
+use reading_progress_actor::ReadingProgressActor;
 use registry_actor::RegistryActor;
 use stream_actor::StreamActor;
 use tokio::spawn;
@@ -45,10 +47,21 @@ pub async fn create_actors() {
     let bookshelf_context = Context::new();
     let bookshelf_addr = bookshelf_context.address();
 
+    tracing::debug!("creating reading progress actor");
+    let reading_progress_context = Context::new();
+    let reading_progress_addr = reading_progress_context.address();
+
     let registry_actor = RegistryActor::new(registry_addr.clone(), engine);
-    let app_data_actor = AppDataActor::new(app_data_addr, registry_addr.clone(), bookshelf_addr.clone());
+    let app_data_actor = AppDataActor::new(
+        app_data_addr,
+        registry_addr.clone(),
+        bookshelf_addr.clone(),
+        reading_progress_addr.clone(),
+    );
+    let reading_progress_actor = ReadingProgressActor::new(reading_progress_addr);
     spawn(registry_context.run(registry_actor));
     spawn(app_data_context.run(app_data_actor));
+    spawn(reading_progress_context.run(reading_progress_actor));
 
     // StreamActor — handles feed content streaming, resolves feeds via
     // Handler<GetFeed> on the RegistryActor.

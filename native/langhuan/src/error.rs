@@ -29,6 +29,54 @@ pub enum FormatOperation {
     Deserialize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheSchemaMismatchError {
+    pub feed_id: String,
+    pub book_id: String,
+    pub chapter_id: String,
+    pub cached_version: u32,
+    pub expected_version: u32,
+}
+
+impl std::fmt::Display for CacheSchemaMismatchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}/{}/{}: cached={}, expected={}",
+            self.feed_id,
+            self.book_id,
+            self.chapter_id,
+            self.cached_version,
+            self.expected_version
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheKeyMismatchError {
+    pub expected_feed_id: String,
+    pub expected_book_id: String,
+    pub expected_chapter_id: String,
+    pub actual_feed_id: String,
+    pub actual_book_id: String,
+    pub actual_chapter_id: String,
+}
+
+impl std::fmt::Display for CacheKeyMismatchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "expected {}/{}/{} but found {}/{}/{}",
+            self.expected_feed_id,
+            self.expected_book_id,
+            self.expected_chapter_id,
+            self.actual_feed_id,
+            self.actual_book_id,
+            self.actual_chapter_id
+        )
+    }
+}
+
 /// Errors that can occur in the langhuan feed engine.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -119,28 +167,15 @@ pub enum Error {
     },
 
     /// The chapter cache file schema version does not match the current code.
-    #[error(
-        "chapter cache schema mismatch for {feed_id}/{book_id}/{chapter_id}: cached={cached_version}, expected={expected_version}"
-    )]
+    #[error("chapter cache schema mismatch: {details}")]
     CacheSchemaMismatch {
-        feed_id: String,
-        book_id: String,
-        chapter_id: String,
-        cached_version: u32,
-        expected_version: u32,
+        details: Box<CacheSchemaMismatchError>,
     },
 
     /// The content of a chapter cache file does not match the expected key.
-    #[error(
-        "chapter cache key mismatch for {expected_feed_id}/{expected_book_id}/{expected_chapter_id}: found {actual_feed_id}/{actual_book_id}/{actual_chapter_id}"
-    )]
+    #[error("chapter cache key mismatch: {details}")]
     CacheKeyMismatch {
-        expected_feed_id: String,
-        expected_book_id: String,
-        expected_chapter_id: String,
-        actual_feed_id: String,
-        actual_book_id: String,
-        actual_chapter_id: String,
+        details: Box<CacheKeyMismatchError>,
     },
 }
 
