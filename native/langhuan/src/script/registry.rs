@@ -1,23 +1,29 @@
 //! Script registry — maps feed IDs to their Lua script files on disk.
 //!
-//! The registry is driven by a `registry.toml` file in the scripts directory:
+//! The registry is driven by a `registry.json` file in the scripts directory:
 //!
-//! ```toml
-//! [[feeds]]
-//! id      = "example-feed"
-//! name    = "範例書源"
-//! version = "1.0.0"
-//! file    = "h6578616d706c652d66656564/h312e302e30.lua"
-//!
-//! [[feeds]]
-//! id      = "another-feed"
-//! name    = "另一書源"
-//! version = "2.1.0"
-//! file    = "h616e6f746865722d66656564/h322e312e30.lua"
+//! ```json
+//! {
+//!   "schema_version": 1,
+//!   "feeds": [
+//!     {
+//!       "id": "example-feed",
+//!       "name": "範例書源",
+//!       "version": "1.0.0",
+//!       "file": "h6578616d706c652d66656564/h312e302e30.lua"
+//!     },
+//!     {
+//!       "id": "another-feed",
+//!       "name": "另一書源",
+//!       "version": "2.1.0",
+//!       "file": "h616e6f746865722d66656564/h322e312e30.lua"
+//!     }
+//!   ]
+//! }
 //! ```
 //!
 //! **Upgrade strategy**: write the new script to a new versioned file, then
-//! update `version` and `file` in `registry.toml`.  Old files are kept for
+//! update `version` and `file` in `registry.json`.  Old files are kept for
 //! potential rollback.
 //!
 //! This module has **no dependency on rinf** — it is pure Rust / tokio.
@@ -34,7 +40,7 @@ use crate::error::{Error, Result};
 use crate::util::fs::write_atomic;
 use crate::util::path_key::encode_path_component;
 
-/// Current schema version for `registry.toml`.
+/// Current schema version for `registry.json`.
 pub const REGISTRY_SCHEMA_VERSION: u32 = 1;
 
 fn default_schema_version() -> u32 {
@@ -42,10 +48,10 @@ fn default_schema_version() -> u32 {
 }
 
 // ---------------------------------------------------------------------------
-// TOML data structures
+// JSON data structures
 // ---------------------------------------------------------------------------
 
-/// A single entry in `registry.toml`.
+/// A single entry in `registry.json`.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RegistryEntry {
     /// Unique identifier for this feed (must match the `@id` in the script header).
@@ -61,7 +67,7 @@ pub struct RegistryEntry {
     pub file: String,
 }
 
-/// Root structure of `registry.toml`.
+/// Root structure of `registry.json`.
 #[derive(Debug, Deserialize, Serialize)]
 struct RegistryFile {
     #[serde(default = "default_schema_version")]
@@ -134,11 +140,11 @@ impl std::fmt::Debug for ScriptRegistry {
 }
 
 impl ScriptRegistry {
-    /// Load the registry from `<base_dir>/registry.toml`.
+    /// Load the registry from `<base_dir>/registry.json`.
     ///
     /// # Errors
     /// - [`Error::RegistryNotFound`] — the file cannot be read.
-    /// - [`Error::RegistryParse`] — the TOML is malformed.
+    /// - [`Error::RegistryParse`] — the JSON is malformed.
     /// - [`Error::DuplicateFeedId`] — two entries share the same `id`.
     pub async fn load_entries(base_dir: &Path) -> Result<HashMap<String, RegistryEntry>> {
         let registry_path = registry_path(base_dir);
@@ -149,7 +155,7 @@ impl ScriptRegistry {
             .map_err(Error::registry_not_found)?;
 
         let registry_file: RegistryFile =
-            toml::from_str(&content).map_err(|e| Error::registry_parse(e.to_string(),
+            serde_json::from_str(&content).map_err(|e| Error::registry_parse(e.to_string(),
             ))?;
 
         if registry_file.schema_version > REGISTRY_SCHEMA_VERSION {
@@ -223,14 +229,14 @@ impl ScriptRegistry {
     /// 1. Parse metadata from `content` via [`super::meta::parse_meta`].
     /// 2. Write the Lua file to
     ///    `<base_dir>/<encoded(feed_id)>/<encoded(version)>.lua`.
-    /// 3. Update `<base_dir>/registry.toml`, replacing any existing entry with
+    /// 3. Update `<base_dir>/registry.json`, replacing any existing entry with
     ///    the same `id` (upgrade) or appending a new entry.
     /// 4. Return the new [`RegistryEntry`].
     ///
     /// # Errors
     /// - [`Error::ScriptParse`] / [`Error::InvalidFeed`] — script header invalid.
     /// - [`Error::RegistryWrite`] — a filesystem write failed.
-    /// - [`Error::RegistryParse`] — existing `registry.toml` is malformed.
+    /// - [`Error::RegistryParse`] — existing `registry.json` is malformed.
     pub async fn install_feed(
         &mut self,
         content: &str,
@@ -294,7 +300,7 @@ impl ScriptRegistry {
                 }
             }
             // Best-effort cleanup for newly written script file when install
-            // failed before becoming durable in registry.toml.
+            // failed before becoming durable in registry.json.
             let _ = tokio::fs::remove_file(&script_path).await;
             return Err(e);
         }
@@ -304,12 +310,12 @@ impl ScriptRegistry {
         Ok(new_entry)
     }
 
-    /// Remove a feed from the registry, rolling back both the TOML entry and the
+    /// Remove a feed from the registry, rolling back both the JSON entry and the
     /// script file on disk.
     ///
     /// # Errors
-    /// - [`Error::RegistryNotFound`] — `registry.toml` does not exist.
-    /// - [`Error::RegistryParse`] — `registry.toml` is malformed.
+    /// - [`Error::RegistryNotFound`] — `registry.json` does not exist.
+    /// - [`Error::RegistryParse`] — `registry.json` is malformed.
     /// - [`Error::FeedNotFound`] — no entry with `feed_id` exists.
     /// - [`Error::RegistryWrite`] — a filesystem write failed.
     pub async fn remove_feed(&mut self, feed_id: &str) -> Result<()> {
@@ -346,14 +352,14 @@ impl ScriptRegistry {
         Ok(())
     }
 
-    /// Ensure `<base_dir>/registry.toml` exists, creating it empty if necessary.
+    /// Ensure `<base_dir>/registry.json` exists, creating it empty if necessary.
     ///
     /// # Errors
     /// - [`Error::RegistryWrite`] — the file could not be created.
     pub async fn ensure_registry(base_dir: &Path) -> Result<()> {
         let registry_path = registry_path(base_dir);
         if !registry_path.exists() {
-            let empty = toml::to_string_pretty(&RegistryFile::default())
+            let empty = serde_json::to_string_pretty(&RegistryFile::default())
                 .map_err(|e| Error::registry_write(e.to_string()))?;
             write_atomic(&registry_path, &empty)
                 .await
@@ -427,10 +433,10 @@ impl ScriptRegistry {
             schema_version: REGISTRY_SCHEMA_VERSION,
             feeds: entries,
         };
-        let toml_content = toml::to_string_pretty(&registry_file)
+        let json_content = serde_json::to_string_pretty(&registry_file)
             .map_err(|e| Error::registry_write(e.to_string()))?;
         let registry_path = registry_path(&self.base_dir);
-        write_atomic(&registry_path, &toml_content)
+        write_atomic(&registry_path, &json_content)
             .await
             .map_err(|e| Error::registry_write(e.to_string()))
     }
@@ -440,10 +446,10 @@ impl ScriptRegistry {
 // install_feed — write a new or upgraded script to disk
 // ---------------------------------------------------------------------------
 
-/// Return the canonical path to `registry.toml` inside `base_dir`.
+/// Return the canonical path to `registry.json` inside `base_dir`.
 #[inline]
 fn registry_path(base_dir: &Path) -> PathBuf {
-    base_dir.join("registry.toml")
+    base_dir.join("registry.json")
 }
 
 #[inline]
@@ -464,12 +470,12 @@ mod tests {
     // Helpers
     // -----------------------------------------------------------------------
 
-    /// Write `registry.toml` and optional script files into a temp directory.
-    async fn setup_dir(registry_toml: &str, scripts: &[(&str, &str)]) -> TempDir {
+    /// Write `registry.json` and optional script files into a temp directory.
+    async fn setup_dir(registry_json: &str, scripts: &[(&str, &str)]) -> TempDir {
         let dir = tempfile::tempdir().expect("tempdir");
-        fs::write(dir.path().join("registry.toml"), registry_toml)
+        fs::write(dir.path().join("registry.json"), registry_json)
             .await
-            .expect("write registry.toml");
+            .expect("write registry.json");
         for (rel_path, content) in scripts {
             let full = dir.path().join(rel_path);
             if let Some(parent) = full.parent() {
@@ -567,14 +573,17 @@ return {{
 
     #[tokio::test]
     async fn load_single_entry() {
-        let toml = r#"
-[[feeds]]
-id      = "test-feed"
-name    = "Test Feed"
-version = "1.0.0"
-file    = "h746573742d66656564/h312e302e30.lua"
-"#;
-    let dir = setup_dir(toml, &[("h746573742d66656564/h312e302e30.lua", MINIMAL_SCRIPT)]).await;
+                let json = r#"{
+    "feeds": [
+        {
+            "id": "test-feed",
+            "name": "Test Feed",
+            "version": "1.0.0",
+            "file": "h746573742d66656564/h312e302e30.lua"
+        }
+    ]
+}"#;
+        let dir = setup_dir(json, &[("h746573742d66656564/h312e302e30.lua", MINIMAL_SCRIPT)]).await;
         let registry = ScriptRegistry::load_entries(dir.path())
             .await
             .expect("load");
@@ -588,22 +597,25 @@ file    = "h746573742d66656564/h312e302e30.lua"
 
     #[tokio::test]
     async fn load_multiple_entries() {
-        let toml = r#"
-[[feeds]]
-id      = "feed-a"
-name    = "Feed A"
-version = "1.0.0"
-file    = "h666565642d61/h312e302e30.lua"
-
-[[feeds]]
-id      = "feed-b"
-name    = "Feed B"
-version = "2.0.0"
-author  = "Alice"
-file    = "h666565642d62/h322e302e30.lua"
-"#;
+                let json = r#"{
+    "feeds": [
+        {
+            "id": "feed-a",
+            "name": "Feed A",
+            "version": "1.0.0",
+            "file": "h666565642d61/h312e302e30.lua"
+        },
+        {
+            "id": "feed-b",
+            "name": "Feed B",
+            "version": "2.0.0",
+            "author": "Alice",
+            "file": "h666565642d62/h322e302e30.lua"
+        }
+    ]
+}"#;
         let dir = setup_dir(
-            toml,
+                        json,
             &[
                 ("h666565642d61/h312e302e30.lua", MINIMAL_SCRIPT),
                 ("h666565642d62/h322e302e30.lua", MINIMAL_SCRIPT),
@@ -622,7 +634,7 @@ file    = "h666565642d62/h322e302e30.lua"
 
     #[tokio::test]
     async fn load_empty_registry() {
-        let dir = setup_dir("", &[]).await;
+        let dir = setup_dir("{}", &[]).await;
         let registry = ScriptRegistry::load_entries(dir.path())
             .await
             .expect("load");
@@ -693,20 +705,23 @@ file    = "h666565642d62/h322e302e30.lua"
 
     #[tokio::test]
     async fn load_duplicate_id_returns_error() {
-        let toml = r#"
-[[feeds]]
-id      = "dup"
-name    = "First"
-version = "1.0.0"
-file    = "h647570/h312e302e30.lua"
-
-[[feeds]]
-id      = "dup"
-name    = "Second"
-version = "2.0.0"
-file    = "h647570/h322e302e30.lua"
-"#;
-        let dir = setup_dir(toml, &[]).await;
+                let json = r#"{
+    "feeds": [
+        {
+            "id": "dup",
+            "name": "First",
+            "version": "1.0.0",
+            "file": "h647570/h312e302e30.lua"
+        },
+        {
+            "id": "dup",
+            "name": "Second",
+            "version": "2.0.0",
+            "file": "h647570/h322e302e30.lua"
+        }
+    ]
+}"#;
+                let dir = setup_dir(json, &[]).await;
         let err = ScriptRegistry::load_entries(dir.path())
             .await
             .expect_err("should fail");
@@ -717,7 +732,7 @@ file    = "h647570/h322e302e30.lua"
     }
 
     // -----------------------------------------------------------------------
-    // load: missing registry.toml
+    // load: missing registry.json
     // -----------------------------------------------------------------------
 
     #[tokio::test]
@@ -733,12 +748,12 @@ file    = "h647570/h322e302e30.lua"
     }
 
     // -----------------------------------------------------------------------
-    // load: malformed TOML
+    // load: malformed JSON
     // -----------------------------------------------------------------------
 
     #[tokio::test]
-    async fn load_malformed_toml() {
-        let dir = setup_dir("this is not valid toml ][", &[]).await;
+    async fn load_malformed_json() {
+        let dir = setup_dir("this is not valid json ][", &[]).await;
         let err = ScriptRegistry::load_entries(dir.path())
             .await
             .expect_err("should fail");
@@ -790,10 +805,10 @@ file    = "h647570/h322e302e30.lua"
     #[tokio::test]
     async fn install_feed_persist_failure_rolls_back_memory_and_file() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let bad_registry_path = dir.path().join("registry.toml");
+        let bad_registry_path = dir.path().join("registry.json");
         fs::create_dir_all(&bad_registry_path)
             .await
-            .expect("create directory at registry.toml path");
+            .expect("create directory at registry.json path");
 
         let script = make_valid_script("rollback-feed", "9.9.9");
         let engine = ScriptEngine::new();
@@ -857,7 +872,7 @@ return {}
             .expect("load persisted registry");
         assert!(
             !persisted.contains_key("bad-feed"),
-            "registry.toml should not include failed feed"
+            "registry.json should not include failed feed"
         );
     }
 
@@ -890,7 +905,7 @@ return {}
             .expect("reload registry file");
         assert!(
             !persisted.contains_key("remove-me"),
-            "registry.toml should no longer contain removed feed"
+            "registry.json should no longer contain removed feed"
         );
     }
 
@@ -934,7 +949,7 @@ return {}
             .expect("reload registry file");
         assert!(
             persisted.contains_key("rollback-remove"),
-            "registry.toml should be restored on rollback"
+            "registry.json should be restored on rollback"
         );
     }
 }

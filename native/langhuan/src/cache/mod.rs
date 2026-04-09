@@ -4,7 +4,9 @@ use async_stream::stream;
 use tokio_stream::StreamExt;
 
 use crate::error::Result;
-use crate::feed::{Feed, FeedMeta, FeedStream};
+use crate::feed::{
+    AuthEntry, AuthInfo, AuthPageContext, AuthStatus, Feed, FeedAuthFlow, FeedMeta, FeedStream,
+};
 use crate::model::{BookInfo, ChapterInfo, Paragraph};
 
 pub mod models;
@@ -447,6 +449,30 @@ impl<F: Feed> Feed for CachedFeed<F> {
 
     fn meta(&self) -> &FeedMeta {
         self.inner.meta()
+    }
+}
+
+impl<F: Feed + FeedAuthFlow> FeedAuthFlow for CachedFeed<F> {
+    type SupportAuth = F::SupportAuth;
+
+    fn supports_auth(&self) -> Option<Self::SupportAuth> {
+        self.inner.supports_auth()
+    }
+
+    fn auth_entry(&self, support: &Self::SupportAuth) -> Result<AuthEntry> {
+        self.inner.auth_entry(support)
+    }
+
+    fn parse_auth(&self, support: &Self::SupportAuth, page: &AuthPageContext) -> Result<AuthInfo> {
+        self.inner.parse_auth(support, page)
+    }
+
+    fn set_auth_info(&self, support: &Self::SupportAuth, auth_info: Option<AuthInfo>) -> Result<()> {
+        self.inner.set_auth_info(support, auth_info)
+    }
+
+    async fn auth_status(&self, support: &Self::SupportAuth) -> Result<AuthStatus> {
+        self.inner.auth_status(support).await
     }
 }
 

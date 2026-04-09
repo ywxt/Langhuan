@@ -232,6 +232,45 @@
   "feedDetailTooltip": "Details",
   "@feedDetailTooltip": { "description": "Feed list tile trailing icon tooltip" },
 
+  "feedAuthLabel": "Auth",
+  "@feedAuthLabel": { "description": "Feed detail auth section label" },
+
+  "feedAuthStatusLoggedIn": "Logged in",
+  "@feedAuthStatusLoggedIn": { "description": "Feed auth status when logged in" },
+
+  "feedAuthStatusLoggedOut": "Logged out",
+  "@feedAuthStatusLoggedOut": { "description": "Feed auth status when logged out" },
+
+  "feedAuthStatusUnsupported": "Unsupported",
+  "@feedAuthStatusUnsupported": { "description": "Feed auth status when auth is not supported" },
+
+  "feedAuthLogin": "Login",
+  "@feedAuthLogin": { "description": "Feed auth login button label" },
+
+  "feedAuthLogout": "Logout",
+  "@feedAuthLogout": { "description": "Feed auth logout button label" },
+
+  "feedAuthPageTitle": "Feed Login",
+  "@feedAuthPageTitle": { "description": "Feed auth webview page title" },
+
+  "feedAuthDone": "Done",
+  "@feedAuthDone": { "description": "Feed auth submit button label" },
+
+  "feedAuthNotSupported": "This feed does not support login.",
+  "@feedAuthNotSupported": { "description": "Feed auth page message when auth is unsupported" },
+
+  "feedAuthUpdated": "Login data updated",
+  "@feedAuthUpdated": { "description": "Snackbar after successful auth page submit" },
+
+  "feedAuthLoggedOut": "Logged out",
+  "@feedAuthLoggedOut": { "description": "Snackbar after feed auth clear" },
+
+  "searchAuthHint": "This source may require login",
+  "@searchAuthHint": { "description": "Hint shown on search error when feed supports auth" },
+
+  "searchAuthAction": "Login Source",
+  "@searchAuthAction": { "description": "Action button for opening feed auth flow from search" },
+
   "feedItemLoadError": "Load error",
   "@feedItemLoadError": { "description": "Label for per-feed compile error in detail sheet" },
 

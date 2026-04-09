@@ -4,6 +4,7 @@
 
 mod app_data_actor;
 mod bookshelf_actor;
+mod login_actor;
 mod locale_actor;
 mod reading_progress_actor;
 mod registry_actor;
@@ -12,6 +13,7 @@ mod stream_actor;
 use app_data_actor::AppDataActor;
 use bookshelf_actor::BookshelfActor;
 use langhuan::script::runtime::ScriptEngine;
+use login_actor::LoginActor;
 use locale_actor::LocaleActor;
 use messages::prelude::Context;
 use reading_progress_actor::ReadingProgressActor;
@@ -42,6 +44,10 @@ pub async fn create_actors() {
     let app_data_context = Context::new();
     let app_data_addr = app_data_context.address();
 
+    tracing::debug!("creating login actor");
+    let login_context = Context::new();
+    let login_addr = login_context.address();
+
     // BookshelfActor - local bookshelf storage and simple capability response.
     tracing::debug!("creating bookshelf actor");
     let bookshelf_context = Context::new();
@@ -52,14 +58,17 @@ pub async fn create_actors() {
     let reading_progress_addr = reading_progress_context.address();
 
     let registry_actor = RegistryActor::new(registry_addr.clone(), engine);
+    let login_actor = LoginActor::new(login_addr.clone(), registry_addr.clone());
     let app_data_actor = AppDataActor::new(
         app_data_addr,
         registry_addr.clone(),
+        login_addr,
         bookshelf_addr.clone(),
         reading_progress_addr.clone(),
     );
     let reading_progress_actor = ReadingProgressActor::new(reading_progress_addr);
     spawn(registry_context.run(registry_actor));
+    spawn(login_context.run(login_actor));
     spawn(app_data_context.run(app_data_actor));
     spawn(reading_progress_context.run(reading_progress_actor));
 

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:rinf/rinf.dart';
+import 'package:tuple/tuple.dart';
 
 import '../../src/bindings/signals/signals.dart';
 
@@ -119,6 +120,16 @@ class ReadingProgressModel {
   final String chapterId;
   final int paragraphIndex;
   final int updatedAtMs;
+}
+
+enum FeedAuthStatusModel { loggedIn, loggedOut, unsupported }
+
+@immutable
+class FeedAuthEntryModel {
+  const FeedAuthEntryModel({required this.url, this.title});
+
+  final String url;
+  final String? title;
 }
 
 // ---------------------------------------------------------------------------
@@ -566,6 +577,140 @@ class FeedService {
   }
 
   // -------------------------------------------------------------------------
+  // Feed auth
+  // -------------------------------------------------------------------------
+
+  Future<bool> isFeedAuthSupported(String feedId) {
+    final requestId = _nextId();
+    return _subscribeAndSend(
+      responseStream: FeedAuthCapabilityResult.rustSignalStream,
+      matches: (message) => message.requestId == requestId,
+      send: () {
+        FeedAuthCapabilityRequest(
+          requestId: requestId,
+          feedId: feedId,
+        ).sendSignalToRust();
+      },
+    ).then((message) {
+      final outcome = message.outcome;
+      if (outcome is FeedAuthCapabilityOutcomeSupported) {
+        return true;
+      }
+      if (outcome is FeedAuthCapabilityOutcomeUnsupported) {
+        return false;
+      }
+      final error = outcome as FeedAuthCapabilityOutcomeError;
+      throw FeedAuthException(message: error.message);
+    });
+  }
+
+  Future<FeedAuthEntryModel?> getFeedAuthEntry(String feedId) {
+    final requestId = _nextId();
+    return _subscribeAndSend(
+      responseStream: FeedAuthEntryResult.rustSignalStream,
+      matches: (message) => message.requestId == requestId,
+      send: () {
+        FeedAuthEntryRequest(
+          requestId: requestId,
+          feedId: feedId,
+        ).sendSignalToRust();
+      },
+    ).then((message) {
+      final outcome = message.outcome;
+      if (outcome is FeedAuthEntryOutcomeSuccess) {
+        return FeedAuthEntryModel(url: outcome.url, title: outcome.title);
+      }
+      if (outcome is FeedAuthEntryOutcomeUnsupported) {
+        return null;
+      }
+      final error = outcome as FeedAuthEntryOutcomeError;
+      throw FeedAuthException(message: error.message);
+    });
+  }
+
+  Future<void> submitFeedAuthPage({
+    required String feedId,
+    required String currentUrl,
+    required String response,
+    required List<Tuple2<String, String>> responseHeaders,
+    required List<CookieEntry> cookies,
+  }) {
+    final requestId = _nextId();
+    return _subscribeAndSend(
+      responseStream: FeedAuthSubmitPageResult.rustSignalStream,
+      matches: (message) => message.requestId == requestId,
+      send: () {
+        FeedAuthSubmitPageRequest(
+          requestId: requestId,
+          feedId: feedId,
+          currentUrl: currentUrl,
+          response: response,
+          responseHeaders: responseHeaders,
+          cookies: cookies,
+        ).sendSignalToRust();
+      },
+    ).then((message) {
+      final outcome = message.outcome;
+      if (outcome is FeedAuthSubmitPageOutcomeSuccess) {
+        return;
+      }
+      if (outcome is FeedAuthSubmitPageOutcomeUnsupported) {
+        throw const FeedAuthException(message: 'feed auth not supported');
+      }
+      final error = outcome as FeedAuthSubmitPageOutcomeError;
+      throw FeedAuthException(message: error.message);
+    });
+  }
+
+  Future<FeedAuthStatusModel> getFeedAuthStatus(String feedId) {
+    final requestId = _nextId();
+    return _subscribeAndSend(
+      responseStream: FeedAuthStatusResult.rustSignalStream,
+      matches: (message) => message.requestId == requestId,
+      send: () {
+        FeedAuthStatusRequest(
+          requestId: requestId,
+          feedId: feedId,
+        ).sendSignalToRust();
+      },
+    ).then((message) {
+      final outcome = message.outcome;
+      if (outcome is FeedAuthStatusOutcomeLoggedIn) {
+        return FeedAuthStatusModel.loggedIn;
+      }
+      if (outcome is FeedAuthStatusOutcomeExpired) {
+        return FeedAuthStatusModel.loggedOut;
+      }
+      if (outcome is FeedAuthStatusOutcomeLoggedOut) {
+        return FeedAuthStatusModel.loggedOut;
+      }
+      final error = outcome as FeedAuthStatusOutcomeError;
+      throw FeedAuthException(message: error.message);
+    });
+  }
+
+  Future<void> clearFeedAuth(String feedId) {
+    final requestId = _nextId();
+    return _subscribeAndSend(
+      responseStream: FeedAuthClearResult.rustSignalStream,
+      matches: (message) => message.requestId == requestId,
+      send: () {
+        FeedAuthClearRequest(
+          requestId: requestId,
+          feedId: feedId,
+        ).sendSignalToRust();
+      },
+    ).then((message) {
+      final outcome = message.outcome;
+      if (outcome is FeedAuthClearOutcomeSuccess) {
+        return;
+      }
+      final error = outcome as FeedAuthClearOutcomeError;
+      throw FeedAuthException(message: error.message);
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // Internal helpers
   // -------------------------------------------------------------------------
 
@@ -698,4 +843,13 @@ class ReadingProgressException implements Exception {
 
   @override
   String toString() => 'ReadingProgressException: $message';
+}
+
+class FeedAuthException implements Exception {
+  const FeedAuthException({required this.message});
+
+  final String message;
+
+  @override
+  String toString() => 'FeedAuthException: $message';
 }

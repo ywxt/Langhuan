@@ -9,6 +9,7 @@ pub enum StorageKind {
     Bookshelf,
     ReadingProgress,
     ChapterCache,
+    Auth,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,6 +26,7 @@ pub enum FormatKind {
     Bookshelf,
     ReadingProgress,
     ChapterCache,
+    Auth,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -126,14 +128,14 @@ pub enum ScriptError {
 // Sub-error: RegistryError — registry management
 // ---------------------------------------------------------------------------
 
-/// Errors related to the script registry (`registry.toml`).
+/// Errors related to the script registry (`registry.json`).
 #[derive(Debug, thiserror::Error)]
 pub enum RegistryError {
-    /// The `registry.toml` file could not be found or read.
+    /// The `registry.json` file could not be found or read.
     #[error("registry not found: {0}")]
     NotFound(std::io::Error),
 
-    /// The `registry.toml` file could not be parsed.
+    /// The `registry.json` file could not be parsed.
     #[error("registry parse error: {message}")]
     Parse { message: String },
 
@@ -149,7 +151,7 @@ pub enum RegistryError {
     #[error("duplicate feed id in registry: {id}")]
     DuplicateFeedId { id: String },
 
-    /// The `registry.toml` schema version is newer than this application
+    /// The `registry.json` schema version is newer than this application
     /// supports.
     #[error("registry schema version {file_version} is newer than supported version {supported_version}")]
     SchemaTooNew {
@@ -173,7 +175,7 @@ pub enum PersistenceError {
         message: String,
     },
 
-    /// Serializing or deserializing a TOML-backed data file failed.
+    /// Serializing or deserializing a JSON-backed data file failed.
     #[error("format error in {kind:?} during {operation:?}: {message}")]
     Format {
         kind: FormatKind,

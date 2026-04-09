@@ -59,6 +59,9 @@ error_target.reading_progress:
 error_target.chapter_cache:
   en: "chapter cache"
   zh: "章節緩存"
+error_target.auth:
+  en: "auth storage"
+  zh: "登錄信息存儲"
 error_target.bookshelf_file:
   en: "bookshelf file"
   zh: "書架文件"
@@ -68,6 +71,9 @@ error_target.reading_progress_file:
 error_target.chapter_cache_file:
   en: "chapter cache file"
   zh: "章節緩存文件"
+error_target.auth_file:
+  en: "auth file"
+  zh: "登錄信息文件"
 error_operation.read:
   en: "read"
   zh: "讀取"

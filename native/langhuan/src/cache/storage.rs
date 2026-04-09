@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use toml;
 
 use crate::error::{
     CacheKeyMismatchError, CacheSchemaMismatchError, Error, FormatKind,
@@ -18,8 +17,8 @@ use super::models::{
 /// Cache storage for chapter content.
 ///
 /// Organizes cached chapters by
-/// `<cache_dir>/<encoded_feed_id>/<encoded_book_id>/<encoded_chapter_id>.toml`.
-/// Each entry is stored as a TOML file containing paragraphs and metadata.
+/// `<cache_dir>/<encoded_feed_id>/<encoded_book_id>/<encoded_chapter_id>.json`.
+/// Each entry is stored as a JSON file containing paragraphs and metadata.
 #[derive(Debug, Clone)]
 pub struct CacheStore {
     cache_dir: PathBuf,
@@ -44,22 +43,22 @@ impl CacheStore {
     /// Get the path for a cached chapter entry.
     fn chapter_cache_path(&self, feed_id: &str, book_id: &str, chapter_id: &str) -> PathBuf {
         self.book_dir(feed_id, book_id)
-            .join(format!("{}.toml", encode_path_component(chapter_id)))
+            .join(format!("{}.json", encode_path_component(chapter_id)))
     }
 
     fn chapter_list_path(&self, feed_id: &str, book_id: &str) -> PathBuf {
-        self.book_dir(feed_id, book_id).join("_chapters.toml")
+        self.book_dir(feed_id, book_id).join("_chapters.json")
     }
 
     fn book_info_path(&self, feed_id: &str, book_id: &str) -> PathBuf {
-        self.book_dir(feed_id, book_id).join("_book_info.toml")
+        self.book_dir(feed_id, book_id).join("_book_info.json")
     }
 
     fn cover_path(&self, feed_id: &str, book_id: &str) -> PathBuf {
         self.book_dir(feed_id, book_id).join("_cover")
     }
 
-    async fn read_toml_entry<T: DeserializeOwned>(
+    async fn read_json_entry<T: DeserializeOwned>(
         &self,
         path: &Path,
     ) -> Result<Option<T>> {
@@ -68,7 +67,7 @@ impl CacheStore {
         }
 
         match tokio::fs::read_to_string(path).await {
-            Ok(content) => toml::from_str::<T>(&content)
+            Ok(content) => serde_json::from_str::<T>(&content)
                 .map(Some)
                 .map_err(|e| Error::format(FormatKind::ChapterCache, FormatOperation::Deserialize, e.to_string())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -76,7 +75,7 @@ impl CacheStore {
         }
     }
 
-    async fn write_toml_entry<T: Serialize>(
+    async fn write_json_entry<T: Serialize>(
         &self,
         path: &Path,
         entry: &T,
@@ -87,15 +86,15 @@ impl CacheStore {
                 .map_err(|e| Error::storage(StorageKind::ChapterCache, StorageOperation::CreateDir, e.to_string()))?;
         }
 
-        let content = toml::to_string(entry)
+        let content = serde_json::to_string(entry)
             .map_err(|e| Error::format(FormatKind::ChapterCache, FormatOperation::Serialize, e.to_string()))?;
 
-        tracing::debug!(path = %path.display(), bytes = content.len(), "writing toml cache entry");
+        tracing::debug!(path = %path.display(), bytes = content.len(), "writing json cache entry");
 
         write_atomic(path, &content)
             .await
             .map_err(|e| {
-                tracing::warn!(path = %path.display(), error = %e, "failed to write toml cache entry");
+                tracing::warn!(path = %path.display(), error = %e, "failed to write json cache entry");
                 Error::storage(StorageKind::ChapterCache, StorageOperation::Write, e.to_string())
             })
     }
@@ -116,7 +115,7 @@ impl CacheStore {
     pub async fn get_book_info(&self, feed_id: &str, book_id: &str) -> Result<Option<BookInfoCacheEntry>> {
         let path = self.book_info_path(feed_id, book_id);
 
-        let maybe_entry = self.read_toml_entry::<BookInfoCacheEntry>(&path).await?;
+        let maybe_entry = self.read_json_entry::<BookInfoCacheEntry>(&path).await?;
         let Some(entry) = maybe_entry else {
             tracing::debug!(
                 feed_id = %feed_id,
@@ -157,7 +156,7 @@ impl CacheStore {
     /// Save book info to cache using atomic writes.
     pub async fn set_book_info(&self, entry: &BookInfoCacheEntry) -> Result<()> {
         let path = self.book_info_path(&entry.feed_id, &entry.book_id);
-        self.write_toml_entry(&path, entry).await?;
+        self.write_json_entry(&path, entry).await?;
 
         tracing::debug!(
             feed_id = %entry.feed_id,
@@ -239,7 +238,7 @@ impl CacheStore {
     pub async fn get_chapters(&self, feed_id: &str, book_id: &str) -> Result<Option<ChapterListCacheEntry>> {
         let path = self.chapter_list_path(feed_id, book_id);
 
-        let maybe_entry = self.read_toml_entry::<ChapterListCacheEntry>(&path).await?;
+        let maybe_entry = self.read_json_entry::<ChapterListCacheEntry>(&path).await?;
         let Some(entry) = maybe_entry else {
             tracing::debug!(
                 feed_id = %feed_id,
@@ -282,7 +281,7 @@ impl CacheStore {
     /// Save a chapter list to cache using atomic writes.
     pub async fn set_chapters(&self, entry: &ChapterListCacheEntry) -> Result<()> {
         let path = self.chapter_list_path(&entry.feed_id, &entry.book_id);
-        self.write_toml_entry(&path, entry).await?;
+        self.write_json_entry(&path, entry).await?;
 
         tracing::debug!(
             feed_id = %entry.feed_id,
@@ -315,7 +314,7 @@ impl CacheStore {
     ) -> Result<Option<ChapterCacheEntry>> {
         let path = self.chapter_cache_path(feed_id, book_id, chapter_id);
 
-        let maybe_entry = self.read_toml_entry::<ChapterCacheEntry>(&path).await?;
+        let maybe_entry = self.read_json_entry::<ChapterCacheEntry>(&path).await?;
         let Some(entry) = maybe_entry else {
             tracing::debug!(
                 feed_id = %feed_id,
@@ -361,7 +360,7 @@ impl CacheStore {
     /// Save a chapter to cache using atomic writes.
     pub async fn set_chapter(&self, entry: &ChapterCacheEntry) -> Result<()> {
         let path = self.chapter_cache_path(&entry.feed_id, &entry.book_id, &entry.chapter_id);
-        self.write_toml_entry(&path, entry).await?;
+        self.write_json_entry(&path, entry).await?;
 
         tracing::debug!(
             feed_id = %entry.feed_id,
@@ -563,7 +562,7 @@ mod tests {
         let path = store.chapter_cache_path("test-feed", "book-001", "ch-001");
 
         tokio::fs::create_dir_all(path.parent().unwrap()).await.unwrap();
-        write_atomic(&path, "not valid toml").await.unwrap();
+        write_atomic(&path, "not valid json").await.unwrap();
 
         let error = store
             .get_chapter("test-feed", "book-001", "ch-001")

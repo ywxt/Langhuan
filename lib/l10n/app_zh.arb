@@ -75,6 +75,20 @@
   "feedDetailAuthor": "作者",
   "feedDetailTooltip": "詳情",
 
+  "feedAuthLabel": "登錄",
+  "feedAuthStatusLoggedIn": "已登錄",
+  "feedAuthStatusLoggedOut": "未登錄",
+  "feedAuthStatusUnsupported": "不支持",
+  "feedAuthLogin": "登錄",
+  "feedAuthLogout": "登出",
+  "feedAuthPageTitle": "書源登錄",
+  "feedAuthDone": "完成",
+  "feedAuthNotSupported": "此書源不支持登錄。",
+  "feedAuthUpdated": "登錄信息已更新",
+  "feedAuthLoggedOut": "已登出",
+  "searchAuthHint": "此書源可能需要先登錄",
+  "searchAuthAction": "去登錄",
+
   "feedItemLoadError": "加載失敗",
 
   "feedDeleteConfirmTitle": "刪除書源？",

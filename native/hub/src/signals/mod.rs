@@ -3,6 +3,18 @@ use std::collections::HashSet;
 use rinf::{DartSignal, RustSignal, SignalPiece};
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Deserialize, Serialize, SignalPiece)]
+pub struct CookieEntry {
+    pub name: String,
+    pub value: String,
+    pub domain: Option<String>,
+    pub path: Option<String>,
+    pub expires: Option<String>,
+    pub secure: Option<bool>,
+    pub http_only: Option<bool>,
+    pub same_site: Option<String>,
+}
+
 // ---------------------------------------------------------------------------
 // Feed signals — Dart → Rust (requests)
 // ---------------------------------------------------------------------------
@@ -288,7 +300,7 @@ pub struct SetLocale {
 /// Confirm installation of a previously previewed feed.
 ///
 /// `request_id` must match the one from the preceding preview request.
-/// Rust will write the script to disk, update `registry.toml`, apply the
+/// Rust will write the script to disk, update `registry.json`, apply the
 /// change to the current in-memory registry, and respond with a
 /// [`FeedInstallResult`].
 #[derive(Deserialize, DartSignal)]
@@ -441,6 +453,113 @@ pub enum BookshelfListOutcome {
 pub struct BookshelfListEnd {
     pub request_id: String,
     pub outcome: BookshelfListOutcome,
+}
+
+// ---------------------------------------------------------------------------
+// Login/Auth signals — Dart -> Rust
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize, DartSignal)]
+pub struct FeedAuthCapabilityRequest {
+    pub request_id: String,
+    pub feed_id: String,
+}
+
+#[derive(Deserialize, DartSignal)]
+pub struct FeedAuthEntryRequest {
+    pub request_id: String,
+    pub feed_id: String,
+}
+
+#[derive(Deserialize, DartSignal)]
+pub struct FeedAuthSubmitPageRequest {
+    pub request_id: String,
+    pub feed_id: String,
+    pub current_url: String,
+    pub response: String,
+    pub response_headers: Vec<(String, String)>,
+    pub cookies: Vec<CookieEntry>,
+}
+
+#[derive(Deserialize, DartSignal)]
+pub struct FeedAuthStatusRequest {
+    pub request_id: String,
+    pub feed_id: String,
+}
+
+#[derive(Deserialize, DartSignal)]
+pub struct FeedAuthClearRequest {
+    pub request_id: String,
+    pub feed_id: String,
+}
+
+// ---------------------------------------------------------------------------
+// Login/Auth signals — Rust -> Dart
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, SignalPiece)]
+pub enum FeedAuthCapabilityOutcome {
+    Supported,
+    Unsupported,
+    Error { message: String },
+}
+
+#[derive(Serialize, RustSignal)]
+pub struct FeedAuthCapabilityResult {
+    pub request_id: String,
+    pub outcome: FeedAuthCapabilityOutcome,
+}
+
+#[derive(Serialize, SignalPiece)]
+pub enum FeedAuthEntryOutcome {
+    Success { url: String, title: Option<String> },
+    Unsupported,
+    Error { message: String },
+}
+
+#[derive(Serialize, RustSignal)]
+pub struct FeedAuthEntryResult {
+    pub request_id: String,
+    pub outcome: FeedAuthEntryOutcome,
+}
+
+#[derive(Serialize, SignalPiece)]
+pub enum FeedAuthSubmitPageOutcome {
+    Success,
+    Unsupported,
+    Error { message: String },
+}
+
+#[derive(Serialize, RustSignal)]
+pub struct FeedAuthSubmitPageResult {
+    pub request_id: String,
+    pub outcome: FeedAuthSubmitPageOutcome,
+}
+
+#[derive(Serialize, SignalPiece)]
+pub enum FeedAuthStatusOutcome {
+    LoggedIn,
+    Expired,
+    LoggedOut,
+    Error { message: String },
+}
+
+#[derive(Serialize, RustSignal)]
+pub struct FeedAuthStatusResult {
+    pub request_id: String,
+    pub outcome: FeedAuthStatusOutcome,
+}
+
+#[derive(Serialize, SignalPiece)]
+pub enum FeedAuthClearOutcome {
+    Success,
+    Error { message: String },
+}
+
+#[derive(Serialize, RustSignal)]
+pub struct FeedAuthClearResult {
+    pub request_id: String,
+    pub outcome: FeedAuthClearOutcome,
 }
 
 

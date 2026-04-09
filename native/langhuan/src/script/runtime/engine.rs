@@ -111,7 +111,7 @@ fn create_sandbox_lua() -> Result<Lua> {
 /// Serialises the entire [`FeedMeta`] into a Lua `meta` table so that
 /// scripts can reference e.g. `meta.base_url`, `meta.charset`, etc.
 fn inject_globals(lua: &Lua, meta: &FeedMeta) -> Result<()> {
-    let meta_value = lua.to_value(meta)?;
+    let meta_value = lua.to_value_with(meta, crate::script::LUA_SERIALIZE_OPTIONS)?;
     lua.globals().set("meta", meta_value)?;
     Ok(())
 }

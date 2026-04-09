@@ -80,6 +80,9 @@ pub struct GetFeed {
     pub feed_id: String,
 }
 
+/// Request all feed IDs currently known to registry entries.
+pub struct GetFeedIds;
+
 // ---------------------------------------------------------------------------
 // RegistryActor
 // ---------------------------------------------------------------------------
@@ -147,7 +150,7 @@ impl RegistryActor {
             return Err(e.to_string());
         }
 
-        // Ensure registry.toml exists (creates an empty one on first run).
+        // Ensure registry.json exists (creates an empty one on first run).
         if let Err(e) = ScriptRegistry::ensure_registry(&scripts_dir).await {
             return Err(localize_error(&e));
         }
@@ -391,6 +394,20 @@ impl Handler<GetFeed> for RegistryActor {
     }
 }
 
+#[async_trait]
+impl Handler<GetFeedIds> for RegistryActor {
+    type Result = Result<Vec<String>, ResolveError>;
+
+    async fn handle(&mut self, _: GetFeedIds, _: &Context<Self>) -> Self::Result {
+        let registry = self.registry.as_ref().ok_or(ResolveError::DirNotSet)?;
+        let ids = registry
+            .list_entries()
+            .map(|entry| entry.id.clone())
+            .collect::<Vec<_>>();
+        Ok(ids)
+    }
+}
+
 fn cache_dir(base_dir: &Path) -> PathBuf {
     base_dir.join("cache")
 }
@@ -514,8 +531,8 @@ mod tests {
         assert_eq!(result.feed_count, 0);
         assert!(result.warning_message.is_none());
         assert!(dir.path().join("scripts").is_dir());
-        assert!(dir.path().join("scripts/registry.toml").is_file());
-        assert!(!dir.path().join("registry.toml").exists());
+        assert!(dir.path().join("scripts/registry.json").is_file());
+        assert!(!dir.path().join("registry.json").exists());
         Ok(())
     }
 }

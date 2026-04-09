@@ -218,6 +218,45 @@ class AppLocalizationsZh extends AppLocalizations {
   String get feedDetailTooltip => '詳情';
 
   @override
+  String get feedAuthLabel => '登錄';
+
+  @override
+  String get feedAuthStatusLoggedIn => '已登錄';
+
+  @override
+  String get feedAuthStatusLoggedOut => '未登錄';
+
+  @override
+  String get feedAuthStatusUnsupported => '不支持';
+
+  @override
+  String get feedAuthLogin => '登錄';
+
+  @override
+  String get feedAuthLogout => '登出';
+
+  @override
+  String get feedAuthPageTitle => '書源登錄';
+
+  @override
+  String get feedAuthDone => '完成';
+
+  @override
+  String get feedAuthNotSupported => '此書源不支持登錄。';
+
+  @override
+  String get feedAuthUpdated => '登錄信息已更新';
+
+  @override
+  String get feedAuthLoggedOut => '已登出';
+
+  @override
+  String get searchAuthHint => '此書源可能需要先登錄';
+
+  @override
+  String get searchAuthAction => '去登錄';
+
+  @override
   String get feedItemLoadError => '加載失敗';
 
   @override

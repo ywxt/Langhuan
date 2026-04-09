@@ -283,7 +283,7 @@ fn now_unix_ms() -> i64 {
 }
 
 fn bookshelf_file(base_dir: &std::path::Path) -> std::path::PathBuf {
-    base_dir.join("bookshelf").join("bookshelf.toml")
+    base_dir.join("bookshelf").join("bookshelf.json")
 }
 
 #[cfg(test)]
@@ -323,8 +323,8 @@ mod tests {
 
         assert!(matches!(result.outcome, BookshelfOperationOutcome::Success));
         assert!(dir.path().join("bookshelf").is_dir());
-        assert!(dir.path().join("bookshelf/bookshelf.toml").is_file());
-        assert!(!dir.path().join("bookshelf.toml").exists());
+        assert!(dir.path().join("bookshelf/bookshelf.json").is_file());
+        assert!(!dir.path().join("bookshelf.json").exists());
         Ok(())
     }
 

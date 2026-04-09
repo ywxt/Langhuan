@@ -6,6 +6,7 @@ import '../features/bookshelf/bookshelf_page.dart';
 import '../features/bookshelf/book_detail_page.dart';
 import '../features/bookshelf/reader_page.dart';
 import '../features/bookshelf/search_page.dart';
+import '../features/feeds/feed_auth_page.dart';
 import '../features/feeds/feeds_page.dart';
 import '../features/settings/settings_page.dart';
 import '../shared/widgets/main_scaffold.dart';
@@ -121,6 +122,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 path: '/feeds',
                 name: 'feeds',
                 builder: (context, state) => const FeedsPage(),
+                routes: [
+                  GoRoute(
+                    path: 'auth',
+                    name: 'feed-auth',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) {
+                      final feedId = state.uri.queryParameters['feedId'] ?? '';
+                      return FeedAuthPage(feedId: feedId);
+                    },
+                  ),
+                ],
               ),
             ],
           ),

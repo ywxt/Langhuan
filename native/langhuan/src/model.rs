@@ -112,8 +112,8 @@ pub struct HttpRequest {
     #[serde(default)]
     pub params: Option<HashMap<String, String>>,
     /// Additional HTTP headers.
-    #[serde(default)]
-    pub headers: Option<HashMap<String, String>>,
+    #[serde(default, deserialize_with = "deserialize_headers_opt")]
+    pub headers: Option<Vec<(String, String)>>,
     /// An optional request body (for POST/PUT), as raw bytes.
     #[serde(default)]
     pub body: Option<HttpBody>,
@@ -150,6 +150,12 @@ impl From<String> for HttpBody {
 impl From<&str> for HttpBody {
     fn from(value: &str) -> Self {
         Self(Bytes::copy_from_slice(value.as_bytes()))
+    }
+}
+
+impl Default for HttpBody {
+    fn default() -> Self {
+        Self(Bytes::new())
     }
 }
 
@@ -222,11 +228,29 @@ pub struct HttpResponse {
     /// HTTP status code.
     pub status: u16,
     /// Response headers.
-    pub headers: HashMap<String, String>,
+    pub headers: Vec<(String, String)>,
     /// The response body as raw bytes.
     pub body: HttpBody,
     /// The final URL after any redirects.
     pub url: String,
+}
+
+fn deserialize_headers_opt<'de, D>(deserializer: D) -> Result<Option<Vec<(String, String)>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum HeaderRepr {
+        Pairs(Vec<(String, String)>),
+        Map(std::collections::BTreeMap<String, String>),
+    }
+
+    let repr = Option::<HeaderRepr>::deserialize(deserializer)?;
+    Ok(repr.map(|value| match value {
+        HeaderRepr::Pairs(v) => v,
+        HeaderRepr::Map(map) => map.into_iter().collect(),
+    }))
 }
 
 #[cfg(test)]

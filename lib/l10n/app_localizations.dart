@@ -488,6 +488,84 @@ abstract class AppLocalizations {
   /// **'Details'**
   String get feedDetailTooltip;
 
+  /// Feed detail auth section label
+  ///
+  /// In en, this message translates to:
+  /// **'Auth'**
+  String get feedAuthLabel;
+
+  /// Feed auth status when logged in
+  ///
+  /// In en, this message translates to:
+  /// **'Logged in'**
+  String get feedAuthStatusLoggedIn;
+
+  /// Feed auth status when logged out
+  ///
+  /// In en, this message translates to:
+  /// **'Logged out'**
+  String get feedAuthStatusLoggedOut;
+
+  /// Feed auth status when auth is not supported
+  ///
+  /// In en, this message translates to:
+  /// **'Unsupported'**
+  String get feedAuthStatusUnsupported;
+
+  /// Feed auth login button label
+  ///
+  /// In en, this message translates to:
+  /// **'Login'**
+  String get feedAuthLogin;
+
+  /// Feed auth logout button label
+  ///
+  /// In en, this message translates to:
+  /// **'Logout'**
+  String get feedAuthLogout;
+
+  /// Feed auth webview page title
+  ///
+  /// In en, this message translates to:
+  /// **'Feed Login'**
+  String get feedAuthPageTitle;
+
+  /// Feed auth submit button label
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get feedAuthDone;
+
+  /// Feed auth page message when auth is unsupported
+  ///
+  /// In en, this message translates to:
+  /// **'This feed does not support login.'**
+  String get feedAuthNotSupported;
+
+  /// Snackbar after successful auth page submit
+  ///
+  /// In en, this message translates to:
+  /// **'Login data updated'**
+  String get feedAuthUpdated;
+
+  /// Snackbar after feed auth clear
+  ///
+  /// In en, this message translates to:
+  /// **'Logged out'**
+  String get feedAuthLoggedOut;
+
+  /// Hint shown on search error when feed supports auth
+  ///
+  /// In en, this message translates to:
+  /// **'This source may require login'**
+  String get searchAuthHint;
+
+  /// Action button for opening feed auth flow from search
+  ///
+  /// In en, this message translates to:
+  /// **'Login Source'**
+  String get searchAuthAction;
+
   /// Label for per-feed compile error in detail sheet
   ///
   /// In en, this message translates to:
@@ -656,13 +734,13 @@ abstract class AppLocalizations {
   /// **'Feed Summary'**
   String get addFeedPreviewTitle;
 
-  /// Label for the allowed domains list in the feed preview
+  /// Label for the access domains list in the feed preview
   ///
   /// In en, this message translates to:
   /// **'Accesses domains'**
   String get addFeedAllowedDomains;
 
-  /// Shown when allowed_domains is empty
+  /// Shown when access_domains is empty
   ///
   /// In en, this message translates to:
   /// **'No domain restrictions'**

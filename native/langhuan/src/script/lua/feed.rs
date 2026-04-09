@@ -1,17 +1,22 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+use std::sync::RwLock;
 use std::time::Duration;
 
 use async_stream::stream;
-use mlua::{FromLua, IntoLua, Lua, LuaSerdeExt, Value};
+use mlua::{FromLua, Lua, LuaSerdeExt, Value};
 use reqwest::Client;
 use serde::de::DeserializeOwned;
 use tokio::time::sleep;
 
 use crate::error::Result;
-use crate::feed::{Feed, FeedMeta, FeedStream};
+use crate::feed::{
+    AuthEntry, AuthInfo, AuthPageContext, AuthStatus, Feed, FeedAuthFlow, FeedMeta, FeedStream,
+    RequestPatchContext,
+};
 use crate::model::{
     BookInfo, ChapterInfo, HttpBody, HttpRequest, HttpResponse, Page, Paragraph, SearchResult,
 };
+use crate::script::LUA_SERIALIZE_OPTIONS;
 
 // ---------------------------------------------------------------------------
 // Retry configuration
@@ -32,6 +37,7 @@ const BACKOFF_MULTIPLIER: u64 = 3;
 
 /// A pair of Lua functions for a single feed operation: one constructs an
 /// [`HttpRequest`] descriptor, the other parses the [`HttpResponse`].
+#[derive(Clone)]
 pub(crate) struct HandlerPair {
     /// Builds an [`HttpRequest`] from the caller-supplied arguments.
     pub request: mlua::Function,
@@ -48,6 +54,21 @@ pub(crate) struct FeedHandlers {
     pub book_info: HandlerPair,
     pub chapters: HandlerPair,
     pub paragraphs: HandlerPair,
+    pub login: Option<LoginHandlers>,
+}
+
+/// Optional Lua login/auth handlers.
+#[derive(Clone)]
+pub(crate) struct LoginHandlers {
+    pub entry: mlua::Function,
+    pub parse: mlua::Function,
+    pub patch_request: mlua::Function,
+    pub status: Option<HandlerPair>,
+}
+
+#[derive(Clone)]
+pub struct LuaSupportAuth {
+    login: LoginHandlers,
 }
 
 /// Extract a [`HandlerPair`] (`request` + `parse`) from a Lua sub-table.
@@ -60,6 +81,35 @@ fn extract_pair(table: &mlua::Table, group: &str) -> mlua::Result<HandlerPair> {
     Ok(HandlerPair { request, parse })
 }
 
+fn extract_optional_login(table: &mlua::Table, lua: &Lua) -> mlua::Result<Option<LoginHandlers>> {
+    let login_value: Value = table.get("login")?;
+    if matches!(login_value, Value::Nil) {
+        return Ok(None);
+    }
+
+    let sub = mlua::Table::from_lua(login_value, lua)?;
+    let entry: mlua::Function = sub.get("entry")?;
+    let parse: mlua::Function = sub.get("parse")?;
+    let patch_request: mlua::Function = sub.get("patch_request")?;
+    let status: Option<HandlerPair> = match sub.get::<Value>("status")? {
+        Value::Nil => None,
+        value => {
+            let status_table = mlua::Table::from_lua(value, lua)?;
+            Some(HandlerPair {
+                request: status_table.get("request")?,
+                parse: status_table.get("parse")?,
+            })
+        }
+    };
+
+    Ok(Some(LoginHandlers {
+        entry,
+        parse,
+        patch_request,
+        status,
+    }))
+}
+
 impl FromLua for FeedHandlers {
     fn from_lua(value: Value, lua: &Lua) -> mlua::Result<Self> {
         let table = mlua::Table::from_lua(value, lua)?;
@@ -69,6 +119,7 @@ impl FromLua for FeedHandlers {
             book_info: extract_pair(&table, "book_info")?,
             chapters: extract_pair(&table, "chapters")?,
             paragraphs: extract_pair(&table, "paragraphs")?,
+            login: extract_optional_login(&table, lua)?,
         })
     }
 }
@@ -108,6 +159,7 @@ pub struct LuaFeed {
     /// `reqwest::Client` is already `Arc`-backed internally; storing it
     /// directly avoids a redundant double-indirection.
     client: Client,
+    auth_info: RwLock<Option<AuthInfo>>,
 }
 
 impl LuaFeed {
@@ -118,6 +170,7 @@ impl LuaFeed {
             handlers,
             meta,
             client,
+            auth_info: RwLock::new(None),
         }
     }
 
@@ -134,10 +187,12 @@ impl LuaFeed {
         &self,
         pair: &HandlerPair,
         args: impl mlua::IntoLuaMulti,
+        patch_context: &RequestPatchContext,
     ) -> Result<Page<T, Value>> {
         let http_request: HttpRequest = self.call_function(&pair.request, args)?;
+        let http_request = self.apply_auth_patch(patch_context, http_request)?;
         let http_response = self.execute_http(&http_request).await?;
-        let lua_response = http_response.into_lua(&self.lua)?;
+        let lua_response = self.lua.to_value_with(&http_response, LUA_SERIALIZE_OPTIONS)?;
         let page: Page<T, Value> = pair.parse.call(lua_response)?;
         Ok(page)
     }
@@ -148,6 +203,7 @@ impl LuaFeed {
         &self,
         pair: &HandlerPair,
         mut make_args: F,
+        patch_context: &RequestPatchContext,
     ) -> Result<Page<T, Value>>
     where
         T: DeserializeOwned,
@@ -156,7 +212,10 @@ impl LuaFeed {
     {
         let mut attempt = 0u32;
         loop {
-            match self.execute_paged_cycle(pair, make_args()).await {
+            match self
+                .execute_paged_cycle(pair, make_args(), patch_context)
+                .await
+            {
                 Ok(page) => {
                     if attempt > 0 {
                         tracing::info!(
@@ -197,10 +256,12 @@ impl LuaFeed {
         &self,
         pair: &HandlerPair,
         args: impl mlua::IntoLuaMulti,
+        patch_context: &RequestPatchContext,
     ) -> Result<T> {
         let http_request: HttpRequest = self.call_function(&pair.request, args)?;
+        let http_request = self.apply_auth_patch(patch_context, http_request)?;
         let http_response = self.execute_http(&http_request).await?;
-        let lua_response = http_response.into_lua(&self.lua)?;
+        let lua_response = self.lua.to_value_with(&http_response, LUA_SERIALIZE_OPTIONS)?;
         let value: Value = pair.parse.call(lua_response)?;
         let result: T = self.lua.from_value(value)?;
         Ok(result)
@@ -229,6 +290,7 @@ impl LuaFeed {
     fn paged_stream_by<'a, T, A, F>(
         &'a self,
         pair: &'a HandlerPair,
+        patch_context: RequestPatchContext,
         mut make_args: F,
     ) -> FeedStream<'a, T>
     where
@@ -240,7 +302,7 @@ impl LuaFeed {
             let mut cursor = Value::Nil;
             loop {
                 match self
-                    .execute_paged_cycle_with_retry_by(pair, || make_args(&cursor))
+                    .execute_paged_cycle_with_retry_by(pair, || make_args(&cursor), &patch_context)
                     .await
                 {
                     Ok(page) => {
@@ -262,6 +324,108 @@ impl LuaFeed {
         })
     }
 
+    fn is_auth_info_expired(auth_info: &AuthInfo) -> bool {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        if let Some(expire_at) = auth_info
+            .get("expire_at")
+            .and_then(serde_json::Value::as_i64)
+        {
+            return expire_at <= now;
+        }
+        if let Some(expires_at) = auth_info
+            .get("expires_at")
+            .and_then(serde_json::Value::as_i64)
+        {
+            return expires_at <= now;
+        }
+        if let (Some(updated_at), Some(ttl_sec)) = (
+            auth_info
+                .get("updated_at")
+                .and_then(serde_json::Value::as_i64),
+            auth_info.get("ttl_sec").and_then(serde_json::Value::as_i64),
+        ) {
+            return updated_at.saturating_add(ttl_sec) <= now;
+        }
+        if let Some(expired) = auth_info
+            .get("expired")
+            .and_then(serde_json::Value::as_bool)
+        {
+            return expired;
+        }
+        false
+    }
+
+    fn apply_auth_patch(
+        &self,
+        context: &RequestPatchContext,
+        request: HttpRequest,
+    ) -> Result<HttpRequest> {
+        let Some(login) = &self.handlers.login else {
+            return Ok(request);
+        };
+
+        let auth_info = {
+            let guard = self
+                .auth_info
+                .read()
+                .map_err(|_| crate::error::Error::invalid_feed("auth state lock poisoned"))?;
+            guard.clone()
+        };
+
+        let Some(auth_info) = auth_info else {
+            return Ok(request);
+        };
+
+        let context_value = self.lua.to_value_with(context, LUA_SERIALIZE_OPTIONS)?;
+    let request_value = self.http_request_to_lua_value(&request)?;
+        let auth_value = self.lua.to_value_with(&auth_info, LUA_SERIALIZE_OPTIONS)?;
+
+        let value: Value = login
+            .patch_request
+            .call((context_value, request_value, auth_value))?;
+        let patched: HttpRequest = self.lua.from_value(value)?;
+        Ok(patched)
+    }
+
+    fn http_request_to_lua_value(&self, request: &HttpRequest) -> Result<Value> {
+        let table = self.lua.create_table()?;
+        table.set("url", request.url.clone())?;
+        table.set("method", request.method.clone())?;
+
+        if let Some(params) = &request.params {
+            let params_table = self.lua.create_table()?;
+            for (k, v) in params {
+                params_table.set(k.as_str(), v.as_str())?;
+            }
+            table.set("params", params_table)?;
+        } else {
+            table.set("params", Value::Nil)?;
+        }
+
+        if let Some(headers) = &request.headers {
+            let headers_table = self.lua.create_table()?;
+            for (k, v) in headers {
+                headers_table.set(k.as_str(), v.as_str())?;
+            }
+            table.set("headers", headers_table)?;
+        } else {
+            table.set("headers", Value::Nil)?;
+        }
+
+        if let Some(body) = &request.body {
+            let body_str = self.lua.create_string(&body.0)?;
+            table.set("body", body_str)?;
+        } else {
+            table.set("body", Value::Nil)?;
+        }
+
+        Ok(Value::Table(table))
+    }
+
     // -----------------------------------------------------------------------
     // HTTP execution
     // -----------------------------------------------------------------------
@@ -278,7 +442,9 @@ impl LuaFeed {
                 url = %req.url,
                 "blocked request by access_domains"
             );
-            return Err(crate::error::Error::domain_not_allowed(req.url.clone(), self.meta.access_domains.clone(),
+            return Err(crate::error::Error::domain_not_allowed(
+                req.url.clone(),
+                self.meta.access_domains.clone(),
             ));
         }
 
@@ -316,7 +482,7 @@ impl LuaFeed {
             "received HTTP response"
         );
 
-        let headers: HashMap<String, String> = response
+        let headers: Vec<(String, String)> = response
             .headers()
             .iter()
             .filter_map(|(k, v)| {
@@ -359,45 +525,34 @@ fn domain_allowed(url: &str, access_domains: &HashSet<String>) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// IntoLua for HttpResponse
-// ---------------------------------------------------------------------------
-
-impl IntoLua for HttpResponse {
-    fn into_lua(self, lua: &Lua) -> mlua::Result<Value> {
-        let table = lua.create_table()?;
-        table.set("status", self.status)?;
-        table.set("url", self.url)?;
-
-        let headers_table = lua.create_table()?;
-        for (k, v) in self.headers {
-            headers_table.set(k, v)?;
-        }
-        table.set("headers", headers_table)?;
-
-        let lua_str = lua.create_string(&self.body.0)?;
-        table.set("body", lua_str)?;
-
-        Ok(Value::Table(table))
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Feed trait implementation
 // ---------------------------------------------------------------------------
 
 impl Feed for LuaFeed {
     fn search<'a>(&'a self, keyword: &'a str) -> FeedStream<'a, SearchResult> {
-        self.paged_stream_by(&self.handlers.search, move |cursor| {
+        let patch_context = RequestPatchContext::Search {
+            feed_id: self.meta.id.clone(),
+        };
+        self.paged_stream_by(&self.handlers.search, patch_context, move |cursor| {
             (keyword, cursor.clone())
         })
     }
 
     async fn book_info(&self, id: &str) -> Result<BookInfo> {
-        self.execute_cycle(&self.handlers.book_info, id).await
+        let patch_context = RequestPatchContext::BookInfo {
+            feed_id: self.meta.id.clone(),
+            book_id: id.to_owned(),
+        };
+        self.execute_cycle(&self.handlers.book_info, id, &patch_context)
+            .await
     }
 
     fn chapters<'a>(&'a self, book_id: &'a str) -> FeedStream<'a, ChapterInfo> {
-        self.paged_stream_by(&self.handlers.chapters, move |cursor| {
+        let patch_context = RequestPatchContext::Chapters {
+            feed_id: self.meta.id.clone(),
+            book_id: book_id.to_owned(),
+        };
+        self.paged_stream_by(&self.handlers.chapters, patch_context, move |cursor| {
             (book_id, cursor.clone())
         })
     }
@@ -407,13 +562,87 @@ impl Feed for LuaFeed {
         book_id: &'a str,
         chapter_id: &'a str,
     ) -> FeedStream<'a, Paragraph> {
-        self.paged_stream_by(&self.handlers.paragraphs, move |cursor| {
+        let patch_context = RequestPatchContext::Paragraphs {
+            feed_id: self.meta.id.clone(),
+            book_id: book_id.to_owned(),
+            chapter_id: chapter_id.to_owned(),
+        };
+        self.paged_stream_by(&self.handlers.paragraphs, patch_context, move |cursor| {
             (book_id, chapter_id, cursor.clone())
         })
     }
 
     fn meta(&self) -> &FeedMeta {
         &self.meta
+    }
+}
+
+impl FeedAuthFlow for LuaFeed {
+    type SupportAuth = LuaSupportAuth;
+
+    fn supports_auth(&self) -> Option<Self::SupportAuth> {
+        self.handlers
+            .login
+            .clone()
+            .map(|login| LuaSupportAuth { login })
+    }
+
+    fn auth_entry(&self, support: &Self::SupportAuth) -> Result<AuthEntry> {
+        let value: Value = support.login.entry.call(())?;
+        let entry: AuthEntry = self.lua.from_value(value)?;
+        Ok(entry)
+    }
+
+    fn parse_auth(&self, support: &Self::SupportAuth, page: &AuthPageContext) -> Result<AuthInfo> {
+        let page_value = self.lua.to_value_with(page, LUA_SERIALIZE_OPTIONS)?;
+        let value: Value = support.login.parse.call(page_value)?;
+        let auth_info: AuthInfo = self.lua.from_value(value)?;
+        Ok(auth_info)
+    }
+
+    fn set_auth_info(&self, _support: &Self::SupportAuth, auth_info: Option<AuthInfo>) -> Result<()> {
+        let mut guard = self
+            .auth_info
+            .write()
+            .map_err(|_| crate::error::Error::invalid_feed("auth state lock poisoned"))?;
+        *guard = auth_info;
+        Ok(())
+    }
+
+    async fn auth_status(&self, support: &Self::SupportAuth) -> Result<AuthStatus> {
+        let cached_auth = {
+            let guard = self
+                .auth_info
+                .read()
+                .map_err(|_| crate::error::Error::invalid_feed("auth state lock poisoned"))?;
+            guard.clone()
+        };
+        let has_auth = cached_auth.is_some();
+
+        if !has_auth {
+            return Ok(AuthStatus::LoggedOut);
+        }
+
+        if let Some(status_pair) = &support.login.status {
+            let context = RequestPatchContext::AuthStatus {
+                feed_id: self.meta.id.clone(),
+            };
+            let remote_status: String = self.execute_cycle(status_pair, (), &context).await?;
+            return Ok(match remote_status.as_str() {
+                "logged_in" => AuthStatus::LoggedIn,
+                "expired" => AuthStatus::Expired,
+                _ => AuthStatus::LoggedOut,
+            });
+        }
+
+        let Some(auth_info) = cached_auth.as_ref() else {
+            return Ok(AuthStatus::LoggedOut);
+        };
+        if Self::is_auth_info_expired(auth_info) {
+            Ok(AuthStatus::Expired)
+        } else {
+            Ok(AuthStatus::LoggedIn)
+        }
     }
 }
 
@@ -446,7 +675,6 @@ mod tests {
 "#
         )
     }
-
 
     /// A Lua script body that:
     /// - `search.request(keyword, cursor)` → GET `meta.base_url/search?q=<keyword>&cursor=<cursor>`

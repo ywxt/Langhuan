@@ -4,4 +4,4 @@ pub mod storage;
 
 pub use local::{LocalBookshelf, LocalBookshelfAddOutcome, LocalBookshelfRemoveOutcome};
 pub use models::{BookIdentity, BookshelfEntry};
-pub use storage::{BookshelfFile, TomlBookshelfStore};
+pub use storage::{BookshelfFile, JsonBookshelfStore};

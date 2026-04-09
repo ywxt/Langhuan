@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::bookshelf::models::{BookIdentity, BookshelfEntry};
-use crate::bookshelf::storage::{BookshelfFile, TomlBookshelfStore};
+use crate::bookshelf::storage::{BookshelfFile, JsonBookshelfStore};
 use crate::error::Result;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,14 +17,14 @@ pub enum LocalBookshelfRemoveOutcome {
 }
 
 pub struct LocalBookshelf {
-    store: TomlBookshelfStore,
+    store: JsonBookshelfStore,
     file: BookshelfFile,
 }
 
 impl LocalBookshelf {
     pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
         tracing::info!(path = %path.as_ref().display(), "opening local bookshelf");
-        let store = TomlBookshelfStore::new(path.as_ref());
+        let store = JsonBookshelfStore::new(path.as_ref());
         let file = store.load().await?;
         tracing::info!(
             path = %store.path().display(),
@@ -114,9 +114,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn add_remove_and_persist_toml() {
+    async fn add_remove_and_persist_json() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("bookshelf.toml");
+        let path = dir.path().join("bookshelf.json");
 
         let mut shelf = LocalBookshelf::open(&path).await.expect("open shelf");
 

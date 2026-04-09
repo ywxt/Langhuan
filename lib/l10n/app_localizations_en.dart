@@ -219,6 +219,45 @@ class AppLocalizationsEn extends AppLocalizations {
   String get feedDetailTooltip => 'Details';
 
   @override
+  String get feedAuthLabel => 'Auth';
+
+  @override
+  String get feedAuthStatusLoggedIn => 'Logged in';
+
+  @override
+  String get feedAuthStatusLoggedOut => 'Logged out';
+
+  @override
+  String get feedAuthStatusUnsupported => 'Unsupported';
+
+  @override
+  String get feedAuthLogin => 'Login';
+
+  @override
+  String get feedAuthLogout => 'Logout';
+
+  @override
+  String get feedAuthPageTitle => 'Feed Login';
+
+  @override
+  String get feedAuthDone => 'Done';
+
+  @override
+  String get feedAuthNotSupported => 'This feed does not support login.';
+
+  @override
+  String get feedAuthUpdated => 'Login data updated';
+
+  @override
+  String get feedAuthLoggedOut => 'Logged out';
+
+  @override
+  String get searchAuthHint => 'This source may require login';
+
+  @override
+  String get searchAuthAction => 'Login Source';
+
+  @override
   String get feedItemLoadError => 'Load error';
 
   @override

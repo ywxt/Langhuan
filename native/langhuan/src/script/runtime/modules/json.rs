@@ -6,6 +6,8 @@
 
 use mlua::{Lua, LuaSerdeExt as _, Result, Value};
 
+use crate::script::LUA_SERIALIZE_OPTIONS;
+
 /// Build and return the `@langhuan/json` module table.
 ///
 /// Called by [`super::register_builtin_modules`]; does not register anything
@@ -19,12 +21,7 @@ pub fn module(lua: &Lua) -> Result<Value> {
         // → Lua `nil` (JSON null serializes as a unit variant, not as None).
         // Together these ensure JSON `null` becomes Lua `nil` rather than the
         // null-userdata sentinel, so `is_nil()` checks work correctly.
-        lua.to_value_with(
-            &v,
-            mlua::SerializeOptions::new()
-                .serialize_none_to_null(false)
-                .serialize_unit_to_null(false),
-        )
+        lua.to_value_with(&v, LUA_SERIALIZE_OPTIONS)
     })?;
 
     let encode = lua.create_function(|lua, v: Value| {

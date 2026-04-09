@@ -24,11 +24,11 @@ impl Default for BookshelfFile {
 }
 
 #[derive(Debug, Clone)]
-pub struct TomlBookshelfStore {
+pub struct JsonBookshelfStore {
     path: PathBuf,
 }
 
-impl TomlBookshelfStore {
+impl JsonBookshelfStore {
     #[must_use]
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self { path: path.into() }
@@ -50,7 +50,7 @@ impl TomlBookshelfStore {
             .await
             .map_err(|e| Error::storage(StorageKind::Bookshelf, StorageOperation::Read, e.to_string()))?;
 
-        let parsed = toml::from_str(&content).map_err(|e| Error::format(FormatKind::Bookshelf, FormatOperation::Deserialize, e.to_string()))?;
+        let parsed = serde_json::from_str(&content).map_err(|e| Error::format(FormatKind::Bookshelf, FormatOperation::Deserialize, e.to_string()))?;
         tracing::debug!(path = %self.path.display(), "bookshelf file loaded");
         Ok(parsed)
     }
@@ -67,7 +67,7 @@ impl TomlBookshelfStore {
                 .map_err(|e| Error::storage(StorageKind::Bookshelf, StorageOperation::CreateDir, e.to_string()))?;
         }
 
-        let content = toml::to_string_pretty(file)
+        let content = serde_json::to_string_pretty(file)
             .map_err(|e| Error::format(FormatKind::Bookshelf, FormatOperation::Serialize, e.to_string()))?;
         write_atomic(&self.path, &content)
             .await
@@ -86,21 +86,21 @@ mod tests {
     #[tokio::test]
     async fn load_missing_file_returns_default() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let store = TomlBookshelfStore::new(dir.path().join("bookshelf.toml"));
+        let store = JsonBookshelfStore::new(dir.path().join("bookshelf.json"));
 
         let file = store.load().await.expect("load default");
         assert!(file.entries.is_empty());
     }
 
     #[tokio::test]
-    async fn load_malformed_toml_returns_parse_error() {
+    async fn load_malformed_json_returns_parse_error() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("bookshelf.toml");
-        tokio::fs::write(&path, "not = [valid toml")
+        let path = dir.path().join("bookshelf.json");
+        tokio::fs::write(&path, "not valid json")
             .await
             .expect("write malformed");
 
-        let store = TomlBookshelfStore::new(path);
+        let store = JsonBookshelfStore::new(path);
         let err = store.load().await.expect_err("expected parse error");
         assert!(matches!(err, Error::Persistence(PersistenceError::Format { kind: FormatKind::Bookshelf, operation: FormatOperation::Deserialize, .. })));
     }
@@ -108,8 +108,8 @@ mod tests {
     #[tokio::test]
     async fn save_then_load_roundtrip() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("bookshelf.toml");
-        let store = TomlBookshelfStore::new(&path);
+        let path = dir.path().join("bookshelf.json");
+        let store = JsonBookshelfStore::new(&path);
 
         let mut file = BookshelfFile::default();
         file.entries.push(BookshelfEntry {

@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use langhuan::progress::{ReadingProgress, ReadingProgressStore};
@@ -17,7 +16,7 @@ use crate::signals::{
 use super::app_data_actor::InitializeAppDataDirectory;
 
 pub struct ReadingProgressActor {
-    store: Option<Arc<ReadingProgressStore>>,
+    store: Option<ReadingProgressStore>,
     _owned_tasks: JoinSet<()>,
 }
 
@@ -43,7 +42,11 @@ impl ReadingProgressActor {
             return Err(e.to_string());
         }
 
-        self.store = Some(Arc::new(ReadingProgressStore::new(progress_dir)));
+        self.store = Some(
+            ReadingProgressStore::open(progress_dir)
+                .await
+                .map_err(|e| localize_error(&e))?,
+        );
         Ok(())
     }
 
@@ -82,10 +85,10 @@ impl ReadingProgressActor {
     }
 
     async fn do_reading_progress_set(
-        &self,
+        &mut self,
         req: ReadingProgressSetRequest,
     ) -> ReadingProgressSetResult {
-        let Some(store) = self.store.as_ref() else {
+        let Some(store) = self.store.as_mut() else {
             return ReadingProgressSetResult {
                 request_id: req.request_id,
                 outcome: ReadingProgressSetOutcome::Error {
