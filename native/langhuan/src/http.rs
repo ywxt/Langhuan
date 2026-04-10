@@ -1,0 +1,294 @@
+//! HTTP types and execution for Langhuan feed scripts.
+//!
+//! This module owns the [`HttpRequest`], [`HttpResponse`], and [`HttpBody`]
+//! data types as well as the runtime helpers that execute requests and convert
+//! them to/from Lua values.
+
+use std::collections::{HashMap, HashSet};
+use std::fmt;
+use std::str::FromStr;
+
+use bytes::Bytes;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+
+use crate::error::Result;
+
+// ---------------------------------------------------------------------------
+// HttpBody
+// ---------------------------------------------------------------------------
+
+/// A body carried by either an HTTP request or an HTTP response.
+///
+/// Raw bytes only — all encoding and decoding is the Lua script's responsibility.
+/// On responses, Rust always delivers the raw bytes; Lua can call `json.decode`
+/// or handle the string as needed.
+#[derive(Debug, Clone)]
+pub struct HttpBody(pub Bytes);
+
+impl HttpBody {
+    /// Construct an [`HttpBody`] from a UTF-8 [`String`].
+    pub fn from_string(s: String) -> Self {
+        Self(Bytes::from(s))
+    }
+
+    /// Decode this body as UTF-8 text.
+    ///
+    /// Returns an error if the body contains invalid UTF-8.
+    pub fn as_str(&self) -> std::result::Result<&str, std::str::Utf8Error> {
+        std::str::from_utf8(&self.0)
+    }
+}
+
+impl From<String> for HttpBody {
+    fn from(value: String) -> Self {
+        Self::from_string(value)
+    }
+}
+
+impl From<&str> for HttpBody {
+    fn from(value: &str) -> Self {
+        Self(Bytes::copy_from_slice(value.as_bytes()))
+    }
+}
+
+impl Default for HttpBody {
+    fn default() -> Self {
+        Self(Bytes::new())
+    }
+}
+
+impl fmt::Display for HttpBody {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.as_str() {
+            Ok(s) => f.write_str(s),
+            Err(_) => Err(fmt::Error),
+        }
+    }
+}
+
+impl FromStr for HttpBody {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(Self::from(s))
+    }
+}
+
+impl Serialize for HttpBody {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_bytes(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for HttpBody {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct HttpBodyVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for HttpBodyVisitor {
+            type Value = HttpBody;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a byte array for HTTP body")
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(HttpBody(Bytes::copy_from_slice(v)))
+            }
+
+            fn visit_byte_buf<E>(self, v: Vec<u8>) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(HttpBody(Bytes::from(v)))
+            }
+        }
+
+        deserializer.deserialize_bytes(HttpBodyVisitor)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HttpRequest
+// ---------------------------------------------------------------------------
+
+/// An HTTP request descriptor constructed by a Lua feed script.
+///
+/// The Lua `*_request` functions return a table that is deserialized into this
+/// struct. Rust then executes the actual HTTP call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HttpRequest {
+    /// The target URL.
+    pub url: String,
+    /// HTTP method (GET, POST, …). Defaults to `"GET"`.
+    #[serde(default = "default_method")]
+    pub method: String,
+    /// Query parameters appended to the URL.
+    #[serde(default)]
+    pub params: HashMap<String, String>,
+    /// Additional HTTP headers.
+    #[serde(default)]
+    pub headers: Vec<(String, String)>,
+    /// An optional request body (for POST/PUT), as raw bytes.
+    #[serde(default)]
+    pub body: Option<HttpBody>,
+}
+
+fn default_method() -> String {
+    "GET".to_owned()
+}
+
+// ---------------------------------------------------------------------------
+// HttpResponse
+// ---------------------------------------------------------------------------
+
+/// An HTTP response passed from Rust into a Lua `parse_*` function.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HttpResponse {
+    /// HTTP status code.
+    pub status: u16,
+    /// Response headers.
+    pub headers: Vec<(String, String)>,
+    /// The response body as raw bytes.
+    pub body: HttpBody,
+    /// The final URL after any redirects.
+    pub url: String,
+}
+
+// ---------------------------------------------------------------------------
+// HTTP execution
+// ---------------------------------------------------------------------------
+
+/// Execute an HTTP request described by an [`HttpRequest`] and return an
+/// [`HttpResponse`].
+///
+/// `feed_id` and `access_domains` are used for domain allowlist enforcement
+/// and tracing.
+pub async fn execute(
+    client: &Client,
+    feed_id: &str,
+    access_domains: &HashSet<String>,
+    req: &HttpRequest,
+) -> Result<HttpResponse> {
+    // Enforce access_domains before making any network call.
+    if !access_domains.is_empty() && !domain_allowed(&req.url, access_domains) {
+        tracing::warn!(
+            feed_id = %feed_id,
+            url = %req.url,
+            "blocked request by access_domains"
+        );
+        return Err(crate::error::Error::domain_not_allowed(
+            req.url.clone(),
+            access_domains.clone(),
+        ));
+    }
+
+    let method = req.method.parse().unwrap_or(reqwest::Method::GET);
+    tracing::debug!(
+        feed_id = %feed_id,
+        method = %method,
+        url = %req.url,
+        "sending HTTP request"
+    );
+    let mut builder = client.request(method, &req.url);
+
+    if !req.params.is_empty() {
+        builder = builder.query(&req.params);
+    }
+
+    for (key, value) in &req.headers {
+        builder = builder.header(key.as_str(), value.as_str());
+    }
+
+    if let Some(body) = &req.body {
+        builder = builder.body(body.0.clone());
+    }
+
+    let response = builder.send().await?;
+
+    let status = response.status().as_u16();
+    let url = response.url().to_string();
+    tracing::debug!(
+        feed_id = %feed_id,
+        status,
+        url = %url,
+        "received HTTP response"
+    );
+
+    let headers: Vec<(String, String)> = response
+        .headers()
+        .iter()
+        .filter_map(|(k, v)| {
+            v.to_str()
+                .ok()
+                .map(|val| (k.as_str().to_owned(), val.to_owned()))
+        })
+        .collect();
+
+    let body = HttpBody(response.bytes().await?);
+
+    Ok(HttpResponse {
+        status,
+        headers,
+        body,
+        url,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Domain allowlist helper
+// ---------------------------------------------------------------------------
+
+/// Check whether the host of `url` is permitted by `access_domains`.
+///
+/// Each entry in `access_domains` must be an exact hostname.
+/// Returns `true` if the host is allowed, `false` if the URL cannot be parsed
+/// or the host is not in the list.
+fn domain_allowed(url: &str, access_domains: &HashSet<String>) -> bool {
+    let parsed = match reqwest::Url::parse(url) {
+        Ok(u) => u,
+        Err(_) => return false,
+    };
+    let host = match parsed.host_str() {
+        Some(h) => h,
+        None => return false,
+    };
+    access_domains.contains(host)
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::HttpBody;
+
+    #[test]
+    fn http_body_to_string_roundtrip() {
+        let src = "hello 世界";
+        let body = HttpBody::from(src);
+        assert_eq!(body.to_string(), src);
+    }
+
+    #[test]
+    fn http_body_from_string_helper_works() {
+        let body = HttpBody::from_string("payload".to_owned());
+        assert_eq!(body.as_str().expect("valid utf-8"), "payload");
+    }
+
+    #[test]
+    fn http_body_from_str_works() {
+        let body: HttpBody = "abc".parse().expect("infallible parse should succeed");
+        assert_eq!(body.as_str().expect("valid utf-8"), "abc");
+    }
+}

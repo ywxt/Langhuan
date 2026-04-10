@@ -3,6 +3,7 @@ pub mod bookshelf;
 pub mod cache;
 pub mod error;
 pub mod feed;
+pub mod http;
 pub mod model;
 pub mod progress;
 pub mod script;

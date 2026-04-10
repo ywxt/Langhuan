@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::sync::RwLock;
 use std::time::Duration;
 
@@ -13,9 +12,8 @@ use crate::feed::{
     AuthEntry, AuthInfo, AuthPageContext, AuthStatus, Feed, FeedAuthFlow, FeedMeta, FeedStream,
     RequestPatchContext,
 };
-use crate::model::{
-    BookInfo, ChapterInfo, HttpBody, HttpRequest, HttpResponse, Page, Paragraph, SearchResult,
-};
+use crate::http::{self, HttpRequest, HttpResponse};
+use crate::model::{BookInfo, ChapterInfo, Page, Paragraph, SearchResult};
 use crate::script::LUA_SERIALIZE_OPTIONS;
 
 // ---------------------------------------------------------------------------
@@ -40,9 +38,9 @@ const BACKOFF_MULTIPLIER: u64 = 3;
 #[derive(Clone)]
 pub(crate) struct HandlerPair {
     /// Builds an [`HttpRequest`] from the caller-supplied arguments.
-    pub request: mlua::Function,
+    pub(crate) request: mlua::Function,
     /// Parses an [`HttpResponse`] into domain data.
-    pub parse: mlua::Function,
+    pub(crate) parse: mlua::Function,
 }
 
 /// All handler pairs extracted from a Lua feed script.
@@ -50,20 +48,20 @@ pub(crate) struct HandlerPair {
 /// Created by [`ScriptEngine::load_feed`](crate::script::runtime::ScriptEngine::load_feed)
 /// and stored inside [`LuaFeed`].
 pub(crate) struct FeedHandlers {
-    pub search: HandlerPair,
-    pub book_info: HandlerPair,
-    pub chapters: HandlerPair,
-    pub paragraphs: HandlerPair,
-    pub login: Option<LoginHandlers>,
+    pub(crate) search: HandlerPair,
+    pub(crate) book_info: HandlerPair,
+    pub(crate) chapters: HandlerPair,
+    pub(crate) paragraphs: HandlerPair,
+    login: Option<LoginHandlers>,
 }
 
 /// Optional Lua login/auth handlers.
 #[derive(Clone)]
-pub(crate) struct LoginHandlers {
-    pub entry: mlua::Function,
-    pub parse: mlua::Function,
-    pub patch_request: mlua::Function,
-    pub status: Option<HandlerPair>,
+struct LoginHandlers {
+    entry: mlua::Function,
+    parse: mlua::Function,
+    patch_request: mlua::Function,
+    status: Option<HandlerPair>,
 }
 
 #[derive(Clone)]
@@ -71,55 +69,55 @@ pub struct LuaSupportAuth {
     login: LoginHandlers,
 }
 
-/// Extract a [`HandlerPair`] (`request` + `parse`) from a Lua sub-table.
-///
-/// Returns `Error::MissingFunction` if either key is missing or not a function.
-fn extract_pair(table: &mlua::Table, group: &str) -> mlua::Result<HandlerPair> {
-    let sub: mlua::Table = table.get(group)?;
-    let request: mlua::Function = sub.get("request")?;
-    let parse: mlua::Function = sub.get("parse")?;
-    Ok(HandlerPair { request, parse })
+impl LuaSupportAuth {
+    fn login(&self) -> &LoginHandlers {
+        &self.login
+    }
 }
 
-fn extract_optional_login(table: &mlua::Table, lua: &Lua) -> mlua::Result<Option<LoginHandlers>> {
-    let login_value: Value = table.get("login")?;
-    if matches!(login_value, Value::Nil) {
-        return Ok(None);
+impl FromLua for HandlerPair {
+    fn from_lua(value: Value, lua: &Lua) -> mlua::Result<Self> {
+        let table = mlua::Table::from_lua(value, lua)?;
+        let request: mlua::Function = table.get("request")?;
+        let parse: mlua::Function = table.get("parse")?;
+        Ok(HandlerPair { request, parse })
     }
+}
 
-    let sub = mlua::Table::from_lua(login_value, lua)?;
-    let entry: mlua::Function = sub.get("entry")?;
-    let parse: mlua::Function = sub.get("parse")?;
-    let patch_request: mlua::Function = sub.get("patch_request")?;
-    let status: Option<HandlerPair> = match sub.get::<Value>("status")? {
-        Value::Nil => None,
-        value => {
-            let status_table = mlua::Table::from_lua(value, lua)?;
-            Some(HandlerPair {
-                request: status_table.get("request")?,
-                parse: status_table.get("parse")?,
-            })
-        }
-    };
-
-    Ok(Some(LoginHandlers {
-        entry,
-        parse,
-        patch_request,
-        status,
-    }))
+impl FromLua for LoginHandlers {
+    fn from_lua(value: Value, lua: &Lua) -> mlua::Result<Self> {
+        let table = mlua::Table::from_lua(value, lua)?;
+        let entry: mlua::Function = table.get("entry")?;
+        let parse: mlua::Function = table.get("parse")?;
+        let patch_request: mlua::Function = table.get("patch_request")?;
+        let status: Option<HandlerPair> = match table.get::<Value>("status")? {
+            Value::Nil => None,
+            value => Some(HandlerPair::from_lua(value, lua)?),
+        };
+        Ok(LoginHandlers {
+            entry,
+            parse,
+            patch_request,
+            status,
+        })
+    }
 }
 
 impl FromLua for FeedHandlers {
     fn from_lua(value: Value, lua: &Lua) -> mlua::Result<Self> {
         let table = mlua::Table::from_lua(value, lua)?;
 
+        let login: Option<LoginHandlers> = match table.get::<Value>("login")? {
+            Value::Nil => None,
+            value => Some(LoginHandlers::from_lua(value, lua)?),
+        };
+
         Ok(Self {
-            search: extract_pair(&table, "search")?,
-            book_info: extract_pair(&table, "book_info")?,
-            chapters: extract_pair(&table, "chapters")?,
-            paragraphs: extract_pair(&table, "paragraphs")?,
-            login: extract_optional_login(&table, lua)?,
+            search: HandlerPair::from_lua(table.get("search")?, lua)?,
+            book_info: HandlerPair::from_lua(table.get("book_info")?, lua)?,
+            chapters: HandlerPair::from_lua(table.get("chapters")?, lua)?,
+            paragraphs: HandlerPair::from_lua(table.get("paragraphs")?, lua)?,
+            login,
         })
     }
 }
@@ -381,7 +379,7 @@ impl LuaFeed {
         };
 
         let context_value = self.lua.to_value_with(context, LUA_SERIALIZE_OPTIONS)?;
-    let request_value = self.http_request_to_lua_value(&request)?;
+        let request_value = self.lua.to_value_with(&request, LUA_SERIALIZE_OPTIONS)?;
         let auth_value = self.lua.to_value_with(&auth_info, LUA_SERIALIZE_OPTIONS)?;
 
         let value: Value = login
@@ -391,137 +389,13 @@ impl LuaFeed {
         Ok(patched)
     }
 
-    fn http_request_to_lua_value(&self, request: &HttpRequest) -> Result<Value> {
-        let table = self.lua.create_table()?;
-        table.set("url", request.url.clone())?;
-        table.set("method", request.method.clone())?;
-
-        if let Some(params) = &request.params {
-            let params_table = self.lua.create_table()?;
-            for (k, v) in params {
-                params_table.set(k.as_str(), v.as_str())?;
-            }
-            table.set("params", params_table)?;
-        } else {
-            table.set("params", Value::Nil)?;
-        }
-
-        if let Some(headers) = &request.headers {
-            let headers_table = self.lua.create_table()?;
-            for (k, v) in headers {
-                headers_table.set(k.as_str(), v.as_str())?;
-            }
-            table.set("headers", headers_table)?;
-        } else {
-            table.set("headers", Value::Nil)?;
-        }
-
-        if let Some(body) = &request.body {
-            let body_str = self.lua.create_string(&body.0)?;
-            table.set("body", body_str)?;
-        } else {
-            table.set("body", Value::Nil)?;
-        }
-
-        Ok(Value::Table(table))
-    }
-
     // -----------------------------------------------------------------------
-    // HTTP execution
+    // HTTP helpers (delegated to crate::http)
     // -----------------------------------------------------------------------
 
-    /// Execute an HTTP request described by an [`HttpRequest`] and return an
-    /// [`HttpResponse`].
     async fn execute_http(&self, req: &HttpRequest) -> Result<HttpResponse> {
-        // Enforce access_domains before making any network call.
-        if !self.meta.access_domains.is_empty()
-            && !domain_allowed(&req.url, &self.meta.access_domains)
-        {
-            tracing::warn!(
-                feed_id = %self.meta.id,
-                url = %req.url,
-                "blocked request by access_domains"
-            );
-            return Err(crate::error::Error::domain_not_allowed(
-                req.url.clone(),
-                self.meta.access_domains.clone(),
-            ));
-        }
-
-        let method = req.method.parse().unwrap_or(reqwest::Method::GET);
-        tracing::debug!(
-            feed_id = %self.meta.id,
-            method = %method,
-            url = %req.url,
-            "sending HTTP request"
-        );
-        let mut builder = self.client.request(method, &req.url);
-
-        if let Some(params) = &req.params {
-            builder = builder.query(params);
-        }
-
-        if let Some(headers) = &req.headers {
-            for (key, value) in headers {
-                builder = builder.header(key.as_str(), value.as_str());
-            }
-        }
-
-        if let Some(body) = &req.body {
-            builder = builder.body(body.0.clone());
-        }
-
-        let response = builder.send().await?;
-
-        let status = response.status().as_u16();
-        let url = response.url().to_string();
-        tracing::debug!(
-            feed_id = %self.meta.id,
-            status,
-            url = %url,
-            "received HTTP response"
-        );
-
-        let headers: Vec<(String, String)> = response
-            .headers()
-            .iter()
-            .filter_map(|(k, v)| {
-                v.to_str()
-                    .ok()
-                    .map(|val| (k.as_str().to_owned(), val.to_owned()))
-            })
-            .collect();
-
-        let body = HttpBody(response.bytes().await?);
-
-        Ok(HttpResponse {
-            status,
-            headers,
-            body,
-            url,
-        })
+        http::execute(&self.client, &self.meta.id, &self.meta.access_domains, req).await
     }
-}
-
-// ---------------------------------------------------------------------------
-// Domain allowlist helper
-// ---------------------------------------------------------------------------
-
-/// Check whether the host of `url` is permitted by `access_domains`.
-///
-/// Each entry in `access_domains` must be an exact hostname.
-/// Returns `true` if the host is allowed, `false` if the URL cannot be parsed
-/// or the host is not in the list.
-fn domain_allowed(url: &str, access_domains: &HashSet<String>) -> bool {
-    let parsed = match reqwest::Url::parse(url) {
-        Ok(u) => u,
-        Err(_) => return false,
-    };
-    let host = match parsed.host_str() {
-        Some(h) => h,
-        None => return false,
-    };
-    access_domains.contains(host)
 }
 
 // ---------------------------------------------------------------------------
@@ -588,14 +462,14 @@ impl FeedAuthFlow for LuaFeed {
     }
 
     fn auth_entry(&self, support: &Self::SupportAuth) -> Result<AuthEntry> {
-        let value: Value = support.login.entry.call(())?;
+        let value: Value = support.login().entry.call(())?;
         let entry: AuthEntry = self.lua.from_value(value)?;
         Ok(entry)
     }
 
     fn parse_auth(&self, support: &Self::SupportAuth, page: &AuthPageContext) -> Result<AuthInfo> {
         let page_value = self.lua.to_value_with(page, LUA_SERIALIZE_OPTIONS)?;
-        let value: Value = support.login.parse.call(page_value)?;
+        let value: Value = support.login().parse.call(page_value)?;
         let auth_info: AuthInfo = self.lua.from_value(value)?;
         Ok(auth_info)
     }
@@ -610,20 +484,19 @@ impl FeedAuthFlow for LuaFeed {
     }
 
     async fn auth_status(&self, support: &Self::SupportAuth) -> Result<AuthStatus> {
-        let cached_auth = {
+        let  cached_auth = {
             let guard = self
                 .auth_info
                 .read()
                 .map_err(|_| crate::error::Error::invalid_feed("auth state lock poisoned"))?;
-            guard.clone()
+             guard.clone()
         };
-        let has_auth = cached_auth.is_some();
 
-        if !has_auth {
+        if cached_auth.is_none() {
             return Ok(AuthStatus::LoggedOut);
         }
 
-        if let Some(status_pair) = &support.login.status {
+        if let Some(status_pair) = &support.login().status {
             let context = RequestPatchContext::AuthStatus {
                 feed_id: self.meta.id.clone(),
             };

@@ -1,7 +1,7 @@
 use std::future::Future;
 
 use crate::error::Result;
-use crate::model::HttpBody;
+use crate::http::HttpBody;
 
 use super::traits::Feed;
 
