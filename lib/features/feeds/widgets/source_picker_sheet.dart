@@ -31,7 +31,10 @@ class _SourcePickerSheetState extends State<SourcePickerSheet> {
   Future<void> _pickFile() async {
     setState(() => _pickingFile = true);
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.any);
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ["lua"],
+      );
       if (result == null || result.files.isEmpty) return;
       final path = result.files.first.path;
       if (path == null) return;

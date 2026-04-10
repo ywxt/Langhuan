@@ -166,3 +166,17 @@ final selectedFeedProvider =
     NotifierProvider<SelectedFeedNotifier, FeedMetaItem?>(
       SelectedFeedNotifier.new,
     );
+
+// ---------------------------------------------------------------------------
+// Per-feed auth status
+// ---------------------------------------------------------------------------
+
+/// Checks whether a feed supports auth, then fetches the auth status.
+///
+/// Returns `null` if auth is not supported by the feed.
+final feedAuthStatusProvider =
+    FutureProvider.family<FeedAuthStatusModel?, String>((ref, feedId) async {
+      final supported = await FeedService.instance.isFeedAuthSupported(feedId);
+      if (!supported) return null;
+      return FeedService.instance.getFeedAuthStatus(feedId);
+    });

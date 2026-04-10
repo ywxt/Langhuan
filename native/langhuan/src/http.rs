@@ -136,7 +136,13 @@ pub struct HttpRequest {
     #[serde(default)]
     pub params: HashMap<String, String>,
     /// Additional HTTP headers.
-    #[serde(default)]
+    ///
+    /// Lua scripts may provide headers as either:
+    /// - A map: `{ ["Content-Type"] = "application/json" }`
+    /// - An array of pairs: `{ {"Content-Type", "application/json"} }`
+    ///
+    /// Both forms are accepted and normalised to `Vec<(String, String)>`.
+    #[serde(default, deserialize_with = "deserialize_headers")]
     pub headers: Vec<(String, String)>,
     /// An optional request body (for POST/PUT), as raw bytes.
     #[serde(default)]
@@ -145,6 +151,79 @@ pub struct HttpRequest {
 
 fn default_method() -> String {
     "GET".to_owned()
+}
+
+/// Deserialize HTTP headers from either a map or an array of pairs.
+///
+/// Lua scripts commonly express headers as a string-keyed table:
+///
+/// ```lua
+/// headers = { ["Content-Type"] = "text/html" }
+/// ```
+///
+/// but some older scripts may use an array of two-element arrays:
+///
+/// ```lua
+/// headers = { {"Content-Type", "text/html"} }
+/// ```
+///
+/// This custom deserializer accepts both forms.
+fn deserialize_headers<'de, D>(deserializer: D) -> std::result::Result<Vec<(String, String)>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, MapAccess, SeqAccess, Visitor};
+
+    struct HeadersVisitor;
+
+    impl<'de> Visitor<'de> for HeadersVisitor {
+        type Value = Vec<(String, String)>;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("a map of header name→value or an array of [name, value] pairs")
+        }
+
+        // Map form: { ["Key"] = "Value", ... }
+        fn visit_map<A>(self, mut map: A) -> std::result::Result<Self::Value, A::Error>
+        where
+            A: MapAccess<'de>,
+        {
+            let mut headers = Vec::new();
+            while let Some((key, value)) = map.next_entry::<String, String>()? {
+                headers.push((key, value));
+            }
+            Ok(headers)
+        }
+
+        // Array-of-pairs form: { {"Key", "Value"}, ... }
+        fn visit_seq<A>(self, mut seq: A) -> std::result::Result<Self::Value, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            let mut headers = Vec::new();
+            while let Some(pair) = seq.next_element::<(String, String)>()? {
+                headers.push(pair);
+            }
+            Ok(headers)
+        }
+
+        // `nil` / absent → empty
+        fn visit_unit<E>(self) -> std::result::Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Vec::new())
+        }
+
+        fn visit_none<E>(self) -> std::result::Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Vec::new())
+        }
+    }
+
+    deserializer.deserialize_any(HeadersVisitor)
 }
 
 // ---------------------------------------------------------------------------

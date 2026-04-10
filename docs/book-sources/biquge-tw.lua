@@ -1,7 +1,7 @@
 -- ==Feed==
 -- @id           biquge-tw
 -- @name         筆趣閣（biquge.tw）
--- @version      1.1.1
+-- @version      1.2.1
 -- @author       GitHub Copilot
 -- @description  適配 biquge.tw 的書源，支持搜尋、詳情、目錄、正文（含多頁章節）
 -- @base_url     https://www.biquge.tw
@@ -38,6 +38,28 @@ local function trim(s)
         return ""
     end
     return (s:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+--- Strip everything up to and including the first colon (ASCII or fullwidth).
+--- Unlike a Lua character class `[:：]`, this handles multi-byte `：` (U+FF1A)
+--- safely without splitting UTF-8 sequences.
+local function strip_before_colon(s)
+    -- Try fullwidth colon first (3-byte `\xEF\xBC\x9A`) so we don't
+    -- accidentally match one of its bytes via the ASCII `:`.
+    local pos_fw = s:find("\xEF\xBC\x9A", 1, true)
+    local pos_hw = s:find(":", 1, true)
+    local pos
+    if pos_fw and pos_hw then
+        pos = math.min(pos_fw, pos_hw)
+    else
+        pos = pos_fw or pos_hw
+    end
+    if pos then
+        -- For fullwidth colon, skip 3 bytes; for ASCII colon, skip 1.
+        local skip = (s:byte(pos) == 0xEF and pos_fw == pos) and 3 or 1
+        return s:sub(pos + skip)
+    end
+    return s
 end
 
 local function html_unescape(s)
@@ -162,22 +184,50 @@ local function parse_search_items(body)
         return items
     end
 
-    local nodes = doc:select('a[href*="/book/"][href$=".html"]')
-    for i = 1, #nodes do
-        local node = nodes[i]
-        local href = node and node:attr("href") or ""
-        local id = extract_book_id(href)
-        if id and not seen[id] then
-            local title = clean_text(node:text())
-            if title ~= "" then
-                table.insert(items, {
-                    id = id,
-                    title = title,
-                    author = "未知",
-                    cover_url = nil,
-                    description = nil,
-                })
-                seen[id] = true
+    -- Primary strategy: find h3 elements that contain book links.
+    -- Each search result is rendered as an h3 heading with a link.
+    local h3_nodes = doc:select("h3")
+    for i = 1, #h3_nodes do
+        local h3 = h3_nodes[i]
+        local link = h3:select('a[href*="/book/"][href$=".html"]'):first()
+        if link then
+            local href = link:attr("href") or ""
+            local id = extract_book_id(href)
+            if id and not seen[id] then
+                local title = clean_text(link:text())
+                if title ~= "" then
+                    table.insert(items, {
+                        id = id,
+                        title = title,
+                        author = "未知",
+                        cover_url = nil,
+                        description = nil,
+                    })
+                    seen[id] = true
+                end
+            end
+        end
+    end
+
+    -- Fallback: scan all book links if h3-based extraction found nothing.
+    if #items == 0 then
+        local nodes = doc:select('a[href*="/book/"][href$=".html"]')
+        for i = 1, #nodes do
+            local node = nodes[i]
+            local href = node and node:attr("href") or ""
+            local id = extract_book_id(href)
+            if id and not seen[id] then
+                local title = clean_text(node:text())
+                if title ~= "" then
+                    table.insert(items, {
+                        id = id,
+                        title = title,
+                        author = "未知",
+                        cover_url = nil,
+                        description = nil,
+                    })
+                    seen[id] = true
+                end
             end
         end
     end
@@ -201,17 +251,47 @@ local function parse_book_info(resp)
             title = clean_text(title_node:text())
         end
 
-        local info_ps = doc:select("#info p")
-        if #info_ps == 0 then
-            info_ps = doc:select("p")
-        end
-        for i = 1, #info_ps do
-            local text = clean_text(info_ps[i]:text())
+        -- Strategy 1: author in h2 text like "作者：干鱼" (current site layout)
+        local h2_nodes = doc:select("h2")
+        for i = 1, #h2_nodes do
+            local text = clean_text(h2_nodes[i]:text())
             if text:find("作者", 1, true) ~= nil then
-                local v = trim((text:gsub("^.-[:：]", "")))
+                local v = trim(strip_before_colon(text))
+                -- The h2 may contain extra info like word count / status;
+                -- take only the first space-delimited token as the author.
+                v = v:match("^(%S+)") or v
                 if v ~= "" then
                     author = v
                     break
+                end
+            end
+        end
+
+        -- Strategy 2: fallback to #info p (older layout)
+        if author == "未知" then
+            local info_ps = doc:select("#info p")
+            if #info_ps == 0 then
+                info_ps = doc:select("p")
+            end
+            for i = 1, #info_ps do
+                local text = clean_text(info_ps[i]:text())
+                if text:find("作者", 1, true) ~= nil then
+                    local v = trim(strip_before_colon(text))
+                    if v ~= "" then
+                        author = v
+                        break
+                    end
+                end
+            end
+        end
+
+        -- Strategy 3: author link inside h2 (e.g. <h2>...<a href="/author/...">name</a>...</h2>)
+        if author == "未知" then
+            local author_link = doc:select('h2 a[href*="/author/"]'):first()
+            if author_link then
+                local v = clean_text(author_link:text())
+                if v ~= "" then
+                    author = v
                 end
             end
         end
@@ -220,11 +300,33 @@ local function parse_book_info(resp)
         if not intro then
             intro = doc:select(".intro"):first()
         end
+        -- Fallback: look for a <p> that is long enough to be a description
+        if not intro then
+            local all_ps = doc:select("p")
+            for i = 1, #all_ps do
+                local text = clean_text(all_ps[i]:text())
+                if #text > 50 and not text:find("作者", 1, true) then
+                    description = text
+                    break
+                end
+            end
+        end
         if intro then
             description = clean_text(intro:text())
         end
 
         local img = doc:select(".fmimg img"):first()
+        if not img then
+            -- Try cover image by src pattern (img.biquge.tw)
+            local all_imgs = doc:select("img")
+            for i = 1, #all_imgs do
+                local src = all_imgs[i]:attr("src") or ""
+                if src:find("img%.biquge%.tw", 1, false) then
+                    img = all_imgs[i]
+                    break
+                end
+            end
+        end
         if not img then
             img = doc:select("img"):first()
         end
@@ -234,7 +336,7 @@ local function parse_book_info(resp)
     end
 
     if title == "" then
-        title = "未知书名"
+        title = "未知書名"
     end
     if author == "" then
         author = "未知"
@@ -293,6 +395,9 @@ local function parse_paragraph_items(resp)
         local title_node = doc:select("h1"):first()
         if title_node then
             title = clean_text(title_node:text())
+            -- Strip page indicator like "（1 / 2）" or "(1 / 2)"
+            title = title:gsub("[（%(]%s*%d+%s*/%s*%d+%s*[）%)]%s*$", "")
+            title = trim(title)
         end
     end
     if title ~= "" then
@@ -319,10 +424,13 @@ local function parse_paragraph_items(resp)
                 local text = clean_text(lines[i]:text())
                 if text ~= ""
                     and text ~= "上一章"
+                    and text ~= "上一页"
                     and text ~= "下一页"
+                    and text ~= "下一章"
                     and text ~= "目录"
                     and text ~= "返回目录"
                     and text ~= "本章未完"
+                    and text ~= "本章未完，点击下一页继续阅读"
                 then
                     table.insert(items, {
                         type = "text",

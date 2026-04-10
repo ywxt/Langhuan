@@ -39,6 +39,8 @@ void main() {
     final state = container.read(bookshelfProvider);
     expect(state.isLoading, isFalse);
     expect(state.hasError, isTrue);
-    expect(state.error, 'bootstrap failed');
+    expect(state.error, isA<BookshelfError>());
+    final error = state.error as BookshelfError;
+    expect(error.type, BookshelfErrorType.loadFailed);
   });
 }

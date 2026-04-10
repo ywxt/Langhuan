@@ -259,13 +259,37 @@ impl LuaFeed {
         patch_context: &RequestPatchContext,
     ) -> Result<T> {
         let http_request: HttpRequest = self.call_function(&pair.request, args)?;
+        tracing::debug!(
+            feed_id = %self.meta.id,
+            url = %http_request.url,
+            method = %http_request.method,
+            "execute_cycle: built HTTP request"
+        );
         let http_request = self.apply_auth_patch(patch_context, http_request)?;
         let http_response = self.execute_http(&http_request).await?;
+        tracing::debug!(
+            feed_id = %self.meta.id,
+            status = http_response.status,
+            body_len = http_response.body.0.len(),
+            "execute_cycle: received HTTP response"
+        );
         let lua_response = self
             .lua
             .to_value_with(&http_response, LUA_SERIALIZE_OPTIONS)?;
         let value: Value = pair.parse.call(lua_response)?;
-        let result: T = self.lua.from_value(value)?;
+        tracing::debug!(
+            feed_id = %self.meta.id,
+            lua_value_type = %value.type_name(),
+            "execute_cycle: Lua parse returned"
+        );
+        let result: T = self.lua.from_value(value).map_err(|e| {
+            tracing::error!(
+                feed_id = %self.meta.id,
+                error = %e,
+                "execute_cycle: from_value deserialization failed"
+            );
+            e
+        })?;
         Ok(result)
     }
 
@@ -276,7 +300,14 @@ impl LuaFeed {
         args: impl mlua::IntoLuaMulti,
     ) -> Result<T> {
         let value: Value = func.call(args)?;
-        let result: T = self.lua.from_value(value)?;
+        let result: T = self.lua.from_value(value).map_err(|e| {
+            tracing::error!(
+                feed_id = %self.meta.id,
+                error = %e,
+                "call_function: from_value deserialization failed"
+            );
+            e
+        })?;
         Ok(result)
     }
 
@@ -354,7 +385,14 @@ impl LuaFeed {
         let value: Value = login
             .patch_request
             .call((context_value, request_value, auth_value))?;
-        let patched: HttpRequest = self.lua.from_value(value)?;
+        let patched: HttpRequest = self.lua.from_value(value).map_err(|e| {
+            tracing::error!(
+                feed_id = %self.meta.id,
+                error = %e,
+                "apply_auth_patch: from_value deserialization failed"
+            );
+            e
+        })?;
         Ok(patched)
     }
 
