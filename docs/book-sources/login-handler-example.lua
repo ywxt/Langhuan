@@ -46,6 +46,7 @@ end
 
 local login_handlers = {
     -- Open this URL in WebView from Flutter.
+    -- Returns: { url = string, title = string? }
     entry = function()
         return {
             url = meta.base_url .. "/login",
@@ -54,7 +55,7 @@ local login_handlers = {
     end,
 
     -- Parse auth payload from WebView context.
-    -- `page` shape:
+    -- `page` shape (AuthPageContext):
     -- {
     --   current_url = "https://...",
     --   response = "<html>...</html>",
@@ -76,6 +77,7 @@ local login_handlers = {
     --     ...
     --   },
     -- }
+    -- Returns: any JSON-serializable table (persisted as auth_info).
     parse = function(page)
         local current_url = page.current_url or ""
         local response = page.response or ""
@@ -127,16 +129,20 @@ local login_handlers = {
             csrf = csrf,
             cookie_header = cookie_header,
             captured_from = current_url,
-            updated_at = os.time(),
         }
     end,
 
-    -- Called for every outbound HttpRequest after request handler returns.
+    -- Called for every outbound HttpRequest when auth_info is present.
+    -- Parameters:
+    --   context (RequestPatchContext): tagged table with `operation` field
+    --     operation: "search" | "book_info" | "chapters" | "paragraphs" | "auth_status"
+    --     feed_id: always present
+    --     book_id: present for book_info, chapters, paragraphs
+    --     chapter_id: present for paragraphs
+    --   request (HttpRequest): the request table from *.request handler
+    --   auth (table): the auth_info value from login.parse
+    -- Returns: (possibly modified) HttpRequest table.
     patch_request = function(context, request, auth)
-        -- Context example:
-        -- context.operation: search | book_info | chapters | paragraphs
-        -- context.feed_id, context.book_id, context.chapter_id
-
         if request.headers == nil then
             request.headers = {}
         end
@@ -164,6 +170,22 @@ local login_handlers = {
 
         return request
     end,
+
+    -- Optional: check whether the current auth session is still valid.
+    -- If omitted, auth status checks are not supported for this source.
+    status = {
+        -- Returns: HttpRequest to probe the auth status endpoint.
+        request = function()
+            return {
+                url = meta.base_url .. "/api/user/me",
+                method = "GET",
+            }
+        end,
+        -- Returns: boolean — true if logged in, false if expired.
+        parse = function(resp)
+            return resp.status == 200
+        end,
+    },
 }
 
 return {

@@ -1,58 +1,79 @@
-# langhuan
+# Langhuan (琅嬛)
 
-A new Flutter project.
+A cross-platform web novel reader with **user-defined book sources**. Write a Lua script, point it at any website, and start reading — no app update required.
 
-## Getting Started
+Built with Flutter (UI), Rust (backend), and Lua (scripting).
 
-This project is a starting point for a Flutter application.
+> [中文版](README.zh.md)
 
-A few resources to get you started if this is your first Flutter project:
+## Features
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- **Lua-based Book Sources** — Define how to search, fetch, and parse novel content from any website via Lua scripts. Supports sources that require login (WebView-based auth flow).
+- **Cache Management** — Local chapter caching with automatic stale data cleanup; bookshelf items are preserved.
+- **Localization** — English and Chinese.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Tech Stack
 
-## Using Rust Inside Flutter
+| Layer     | Technology                    |
+| --------- | ----------------------------- |
+| UI        | Flutter + Riverpod + GoRouter |
+| Bridge    | flutter_rust_bridge v2        |
+| Backend   | Rust + Tokio (Actor model)    |
+| Scripting | Lua 5.4 (mlua, sandboxed)     |
+| HTTP      | reqwest + rustls              |
 
-This project leverages Flutter for GUI and Rust for the backend logic,
-utilizing the capabilities of the
-[Rinf](https://pub.dev/packages/rinf) framework.
+## Project Structure
 
-To run and build this app, you need to have
-[Flutter SDK](https://docs.flutter.dev/get-started/install)
-and [Rust toolchain](https://www.rust-lang.org/tools/install)
-installed on your system.
-You can check that your system is ready with the commands below.
-Note that all the Flutter subcomponents should be installed.
+```
+lib/                        # Flutter frontend
+├── features/               # Feature modules (bookshelf, feeds, settings)
+├── router/                 # GoRouter configuration
+├── shared/                 # Shared services, theme, widgets
+└── l10n/                   # Localization resources (ARB)
 
-```shell
-rustc --version
+native/langhuan/            # Core Rust library (pure domain logic)
+├── src/
+│   ├── script/             # Lua script engine & runtime
+│   ├── cache/              # Cache storage
+│   ├── bookshelf/          # Bookshelf persistence
+│   ├── progress/           # Reading progress
+│   ├── auth/               # Login & authentication
+│   └── feed/               # Feed loading & registry
+
+native/hub/                 # FRB bridge layer + Actor system
+├── src/
+│   ├── api/                # FRB API (public functions callable from Dart)
+│   └── actors/             # Message-passing actors
+```
+
+## Building
+
+Prerequisites:
+
+- [Flutter SDK](https://docs.flutter.dev/get-started/install) (≥ 3.11.3)
+- [Rust toolchain](https://www.rust-lang.org/tools/install)
+
+```bash
+# Verify environment
 flutter doctor
-```
+rustc --version
 
-You also need to have the CLI tool for Rinf ready.
+# Install the codegen tool (first time only)
+cargo install flutter_rust_bridge_codegen
 
-```shell
-cargo install rinf_cli
-```
+# Generate Dart ↔ Rust bindings (required before the first build)
+flutter_rust_bridge_codegen generate
 
-Signals sent between Dart and Rust are implemented using signal attributes.
-If you've modified the signal structs, run the following command
-to generate the corresponding Dart classes:
-
-```shell
-rinf gen
-```
-
-Now you can run and build this app just like any other Flutter projects.
-
-```shell
+# Run
 flutter run
 ```
 
-For detailed instructions on writing Rust and Flutter together,
-please refer to Rinf's [documentation](https://rinf.cunarist.org).
+When you later modify the Rust API surface (functions in `native/hub/src/api/`), re-run `flutter_rust_bridge_codegen generate` to update the bindings. The generated Dart code lives in `lib/src/rust/` and the generated Rust code in `native/hub/src/frb_generated.rs` — do not edit these files manually.
+
+## Book Source Scripts
+
+Book sources are Lua scripts that define how to fetch novel content from a specific website. See the [book source documentation](docs/book-sources/README.md) for the full scripting guide, API reference, and examples.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).

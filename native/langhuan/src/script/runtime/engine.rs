@@ -99,13 +99,43 @@ impl Default for ScriptEngine {
 
 /// Create a Lua VM with only safe standard libraries.
 ///
-/// Enabled: `string`, `table`, `math`, `utf8`, `coroutine`, `base` (print, etc.)
-/// Disabled: `os`, `io`, `debug`, `package`, `ffi`
+/// Enabled: `string`, `table`, `math`, `utf8`, `coroutine`
+/// Partially enabled: `os` (only date/time functions)
+/// Disabled: `io`, `debug`, `package`, `ffi`, `base` (load, dofile, etc.)
 fn create_sandbox_lua() -> Result<Lua> {
-    let safe_libs =
-        StdLib::STRING | StdLib::TABLE | StdLib::MATH | StdLib::UTF8 | StdLib::COROUTINE;
+    let safe_libs = StdLib::STRING
+        | StdLib::TABLE
+        | StdLib::MATH
+        | StdLib::UTF8
+        | StdLib::COROUTINE
+        | StdLib::OS;
 
     let lua = Lua::new_with(safe_libs, mlua::LuaOptions::default())?;
+
+    // -- Restrict `base` library functions that can execute code or access the filesystem ---
+    {
+        let globals = lua.globals();
+        for key in &["load", "loadfile", "dofile", "loadstring"] {
+            globals.set(*key, mlua::Value::Nil)?;
+        }
+    }
+
+    // -- Restrict `os` to date/time only --------------------------------
+    {
+        let os: mlua::Table = lua.globals().get("os")?;
+        for key in &[
+            "execute",
+            "exit",
+            "getenv",
+            "remove",
+            "rename",
+            "tmpname",
+            "setlocale",
+        ] {
+            os.set(*key, mlua::Value::Nil)?;
+        }
+    }
+
     modules::register_builtin_modules(&lua)?;
     Ok(lua)
 }
@@ -118,4 +148,37 @@ fn inject_globals(lua: &Lua, meta: &FeedMeta) -> Result<()> {
     let meta_value = lua.to_value_with(meta, crate::script::LUA_SERIALIZE_OPTIONS)?;
     lua.globals().set("meta", meta_value)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_sandbox_without_load_function() {
+        let lua = create_sandbox_lua().expect("failed to create sandbox Lua VM");
+        let code = r#"
+            assert(load == nil, "load should be disabled in sandbox");
+            assert(dofile == nil, "dofile should be disabled in sandbox");
+            assert(loadfile == nil, "loadfile should be disabled in sandbox");
+            assert(loadstring == nil, "loadstring should be disabled in sandbox");
+        "#;
+        let _: () = lua.load(code).eval().unwrap();
+    }
+
+    #[test]
+    fn test_sandbox_os_library() {
+        let lua = create_sandbox_lua().expect("failed to create sandbox Lua VM");
+        let code = r#"
+            assert(os.execute == nil, "os.execute should be disabled in sandbox");
+            assert(os.getenv == nil, "os.getenv should be disabled in sandbox");
+            assert(os.date ~= nil, "os.date should be available in sandbox");
+            assert(os.time ~= nil, "os.time should be available in sandbox");
+            assert(os.difftime ~= nil, "os.difftime should be available in sandbox");
+            assert(os.setlocale == nil, "os.setlocale should be disabled in sandbox");
+            assert(os.tmpname == nil, "os.tmpname should be disabled in sandbox");
+            assert(os.remove == nil, "os.remove should be disabled in sandbox");
+            assert(os.rename == nil, "os.rename should be disabled in sandbox");
+        "#;
+        let _: () = lua.load(code).eval().unwrap();
+    }
 }
