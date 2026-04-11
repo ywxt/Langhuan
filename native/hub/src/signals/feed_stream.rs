@@ -1,64 +1,98 @@
 use rinf::{DartSignal, RustSignal, SignalPiece};
 use serde::{Deserialize, Serialize};
 
-/// Request a search stream. Rust will emit zero or more [`SearchResultItem`]
-/// signals followed by exactly one [`FeedStreamEnd`] signal, all sharing the
-/// same `request_id`.
+// ---------------------------------------------------------------------------
+// Pull-based session signals (Dart → Rust)
+// ---------------------------------------------------------------------------
+
+/// Open a pull-based search session.
+/// Rust spawns a background task that holds the `FeedStream` but does **not**
+/// advance it until a [`PullNextRequest`] arrives.
 #[derive(Deserialize, DartSignal)]
-pub struct SearchRequest {
-    pub request_id: String,
+pub struct OpenSearchSession {
+    pub session_id: String,
     pub feed_id: String,
     pub keyword: String,
 }
 
-/// Request a chapters stream for a book.
+/// Open a pull-based chapters session.
 #[derive(Deserialize, DartSignal)]
-pub struct ChaptersRequest {
-    pub request_id: String,
+pub struct OpenChaptersSession {
+    pub session_id: String,
     pub feed_id: String,
     pub book_id: String,
 }
 
-/// Request a chapter-content stream.
+/// Open a pull-based paragraphs (chapter content) session.
 #[derive(Deserialize, DartSignal)]
-pub struct ChapterContentRequest {
-    pub request_id: String,
+pub struct OpenParagraphsSession {
+    pub session_id: String,
     pub feed_id: String,
     pub book_id: String,
     pub chapter_id: String,
 }
 
-/// Request detailed information for a single book.
+/// Pull the next item from an open session.
+/// Rust calls `stream.next()` exactly once and replies with the corresponding
+/// `Pull*Result` signal.
 #[derive(Deserialize, DartSignal)]
-pub struct BookInfoRequest {
-    pub feed_id: String,
-    pub book_id: String,
+pub struct PullNextRequest {
+    pub session_id: String,
 }
 
-/// Cancel an in-progress stream identified by `request_id`.
+/// Close (and abort) an open session.
 #[derive(Deserialize, DartSignal)]
-pub struct FeedCancelRequest {
-    pub request_id: String,
+pub struct CloseSessionRequest {
+    pub session_id: String,
+}
+
+// ---------------------------------------------------------------------------
+// Pull-based session signals (Rust → Dart)
+// ---------------------------------------------------------------------------
+
+/// Outcome of pulling the next search result.
+#[derive(Serialize, SignalPiece)]
+pub enum PullSearchOutcome {
+    Item {
+        id: String,
+        title: String,
+        author: String,
+        cover_url: Option<String>,
+        description: Option<String>,
+    },
+    End,
+    Error {
+        message: String,
+    },
 }
 
 #[derive(Serialize, RustSignal)]
-pub struct SearchResultItem {
-    pub request_id: String,
-    pub id: String,
-    pub title: String,
-    pub author: String,
-    pub cover_url: Option<String>,
-    pub description: Option<String>,
+pub struct PullSearchResult {
+    pub session_id: String,
+    pub outcome: PullSearchOutcome,
+}
+
+/// Outcome of pulling the next chapter info.
+#[derive(Serialize, SignalPiece)]
+pub enum PullChapterOutcome {
+    Item {
+        id: String,
+        title: String,
+        index: u32,
+    },
+    End,
+    Error {
+        message: String,
+    },
 }
 
 #[derive(Serialize, RustSignal)]
-pub struct ChapterInfoItem {
-    pub request_id: String,
-    pub id: String,
-    pub title: String,
-    pub index: u32,
+pub struct PullChapterResult {
+    pub session_id: String,
+    pub outcome: PullChapterOutcome,
 }
 
+/// Paragraph content types (shared by pull result).
 #[derive(Serialize, SignalPiece)]
 pub enum ParagraphContent {
     Title { text: String },
@@ -66,10 +100,29 @@ pub enum ParagraphContent {
     Image { url: String, alt: Option<String> },
 }
 
+/// Outcome of pulling the next paragraph.
+#[derive(Serialize, SignalPiece)]
+pub enum PullParagraphOutcome {
+    Item { paragraph: ParagraphContent },
+    End,
+    Error { message: String },
+}
+
 #[derive(Serialize, RustSignal)]
-pub struct ChapterParagraphItem {
-    pub request_id: String,
-    pub paragraph: ParagraphContent,
+pub struct PullParagraphResult {
+    pub session_id: String,
+    pub outcome: PullParagraphOutcome,
+}
+
+// ---------------------------------------------------------------------------
+// Book info (unchanged — already request-response)
+// ---------------------------------------------------------------------------
+
+/// Request detailed information for a single book.
+#[derive(Deserialize, DartSignal)]
+pub struct BookInfoRequest {
+    pub feed_id: String,
+    pub book_id: String,
 }
 
 #[derive(Serialize, SignalPiece)]
@@ -91,15 +144,21 @@ pub struct BookInfoResult {
     pub outcome: BookInfoOutcome,
 }
 
+// ---------------------------------------------------------------------------
+// Session open acknowledgement (Rust → Dart)
+// ---------------------------------------------------------------------------
+
+/// Outcome of opening a session.
 #[derive(Serialize, SignalPiece)]
-pub enum FeedStreamOutcome {
-    Completed,
-    Cancelled,
-    Failed { error: String, retried_count: u32 },
+pub enum OpenSessionOutcome {
+    /// Session created successfully, ready for [`PullNextRequest`].
+    Ok,
+    /// Failed to open (e.g. feed not found).
+    Error { message: String },
 }
 
 #[derive(Serialize, RustSignal)]
-pub struct FeedStreamEnd {
-    pub request_id: String,
-    pub outcome: FeedStreamOutcome,
+pub struct OpenSessionResult {
+    pub session_id: String,
+    pub outcome: OpenSessionOutcome,
 }

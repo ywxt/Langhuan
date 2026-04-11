@@ -1,7 +1,6 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../src/bindings/signals/signals.dart';
 import 'feed_service.dart';
 
 // ---------------------------------------------------------------------------
@@ -47,38 +46,67 @@ class SearchState {
 }
 
 class SearchNotifier extends Notifier<SearchState> {
-  StreamSubscription<SearchResultModel>? _subscription;
+  int _runToken = 0;
 
   @override
   SearchState build() => const SearchState();
 
   Future<void> search({required String feedId, required String keyword}) async {
     await _cancelCurrent();
+    final runToken = ++_runToken;
 
     state = SearchState(keyword: keyword, isLoading: true);
 
-    final (:requestId, :stream) = FeedService.instance.search(
-      feedId: feedId,
-      keyword: keyword,
-    );
+    try {
+      final sessionId = await FeedService.instance.openSearchSession(
+        feedId: feedId,
+        keyword: keyword,
+      );
+      if (runToken != _runToken) {
+        FeedService.instance.closeSession(sessionId);
+        return;
+      }
 
-    state = state.copyWith(requestId: () => requestId);
+      state = state.copyWith(requestId: () => sessionId);
 
-    _subscription = stream.listen(
-      (item) {
-        state = state.copyWith(items: [...state.items, item]);
-      },
-      onError: (Object err) {
+      while (runToken == _runToken) {
+        final outcome = await FeedService.instance.pullNextSearchResult(
+          sessionId,
+        );
+        if (outcome is PullSearchOutcomeItem) {
+          state = state.copyWith(
+            items: [
+              ...state.items,
+              SearchResultModel(
+                id: outcome.id,
+                title: outcome.title,
+                author: outcome.author,
+                coverUrl: outcome.coverUrl,
+                description: outcome.description,
+              ),
+            ],
+          );
+          continue;
+        }
+        if (outcome is PullSearchOutcomeEnd) {
+          break;
+        }
+        final error = outcome as PullSearchOutcomeError;
+        throw FeedPullException(message: error.message);
+      }
+
+      if (runToken == _runToken) {
+        state = state.copyWith(isLoading: false, requestId: () => null);
+      }
+    } catch (err) {
+      if (runToken == _runToken) {
         state = state.copyWith(
           isLoading: false,
           error: () => err,
           requestId: () => null,
         );
-      },
-      onDone: () {
-        state = state.copyWith(isLoading: false, requestId: () => null);
-      },
-    );
+      }
+    }
   }
 
   Future<void> cancelAndClear() async {
@@ -94,10 +122,10 @@ class SearchNotifier extends Notifier<SearchState> {
   Future<void> _cancelCurrent() async {
     final id = state.requestId;
     if (id != null) {
-      FeedService.instance.cancel(id);
+      FeedService.instance.closeSession(id);
     }
-    await _subscription?.cancel();
-    _subscription = null;
+    _runToken++;
+    state = state.copyWith(requestId: () => null, isLoading: false);
   }
 }
 

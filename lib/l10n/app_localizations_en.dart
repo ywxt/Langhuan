@@ -228,6 +228,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get feedAuthStatusLoggedOut => 'Logged out';
 
   @override
+  String get feedAuthStatusExpired => 'Expired';
+
+  @override
   String get feedAuthStatusUnsupported => 'Unsupported';
 
   @override

@@ -78,6 +78,7 @@
   "feedAuthLabel": "登錄",
   "feedAuthStatusLoggedIn": "已登錄",
   "feedAuthStatusLoggedOut": "未登錄",
+  "feedAuthStatusExpired": "登錄已過期",
   "feedAuthStatusUnsupported": "不支持",
   "feedAuthLogin": "登錄",
   "feedAuthLogout": "登出",

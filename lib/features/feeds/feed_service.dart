@@ -122,7 +122,7 @@ class ReadingProgressModel {
   final int updatedAtMs;
 }
 
-enum FeedAuthStatusModel { loggedIn, loggedOut, unsupported }
+enum FeedAuthStatusModel { loggedIn, loggedOut, expired, unsupported }
 
 @immutable
 class FeedAuthEntryModel {
@@ -136,15 +136,10 @@ class FeedAuthEntryModel {
 // FeedService
 // ---------------------------------------------------------------------------
 
-/// Wraps Rinf broadcast signals into clean per-request Dart [Stream]s.
+/// Wraps Rinf signals into pull-based session APIs.
 ///
-/// Each method:
-/// 1. Generates a unique `requestId`.
-/// 2. Sends the appropriate `DartSignal` to Rust.
-/// 3. Returns a [Stream] that filters the global broadcast by `requestId`
-///    and terminates when the matching [FeedStreamEnd] arrives.
-///
-/// Call [cancel] with the `requestId` to abort an in-progress stream.
+/// Flutter opens a session, then explicitly sends `PullNextRequest` for each
+/// next item. Rust only advances feed streams when PullNext is requested.
 class FeedService {
   FeedService._();
 
@@ -161,75 +156,75 @@ class FeedService {
       'req-${DateTime.now().millisecondsSinceEpoch}-${_counter++}';
 
   // -------------------------------------------------------------------------
-  // Search
+  // Pull session: search
   // -------------------------------------------------------------------------
 
-  /// Start a search stream.
-  ///
-  /// Returns a record of `(requestId, stream)`.  Use `requestId` to cancel.
-  ({String requestId, Stream<SearchResultModel> stream}) search({
+  Future<String> openSearchSession({
     required String feedId,
     required String keyword,
-  }) {
-    final requestId = _nextId();
-
-    final stream = _buildStream<SearchResultModel>(
-      requestId: requestId,
-      itemStream: SearchResultItem.rustSignalStream
-          .where((pack) => pack.message.requestId == requestId)
-          .map(
-            (pack) => SearchResultModel(
-              id: pack.message.id,
-              title: pack.message.title,
-              author: pack.message.author,
-              coverUrl: pack.message.coverUrl,
-              description: pack.message.description,
-            ),
-          ),
+  }) async {
+    final sessionId = _nextId();
+    final result = await _subscribeAndSend(
+      responseStream: OpenSessionResult.rustSignalStream,
+      matches: (message) => message.sessionId == sessionId,
       send: () {
-        SearchRequest(
-          requestId: requestId,
+        OpenSearchSession(
+          sessionId: sessionId,
           feedId: feedId,
           keyword: keyword,
         ).sendSignalToRust();
       },
     );
 
-    return (requestId: requestId, stream: stream);
+    final outcome = result.outcome;
+    if (outcome is OpenSessionOutcomeError) {
+      throw FeedPullException(message: outcome.message);
+    }
+    return sessionId;
+  }
+
+  Future<PullSearchOutcome> pullNextSearchResult(String sessionId) {
+    return _subscribeAndSend(
+      responseStream: PullSearchResult.rustSignalStream,
+      matches: (message) => message.sessionId == sessionId,
+      send: () => PullNextRequest(sessionId: sessionId).sendSignalToRust(),
+    ).then((message) => message.outcome);
   }
 
   // -------------------------------------------------------------------------
-  // Chapters
+  // Pull session: chapters
   // -------------------------------------------------------------------------
 
-  /// Start a chapters stream for a book.
-  ({String requestId, Stream<ChapterInfoModel> stream}) chapters({
+  Future<String> openChaptersSession({
     required String feedId,
     required String bookId,
-  }) {
-    final requestId = _nextId();
-
-    final stream = _buildStream<ChapterInfoModel>(
-      requestId: requestId,
-      itemStream: ChapterInfoItem.rustSignalStream
-          .where((pack) => pack.message.requestId == requestId)
-          .map(
-            (pack) => ChapterInfoModel(
-              id: pack.message.id,
-              title: pack.message.title,
-              index: pack.message.index,
-            ),
-          ),
+  }) async {
+    final sessionId = _nextId();
+    final result = await _subscribeAndSend(
+      responseStream: OpenSessionResult.rustSignalStream,
+      matches: (message) => message.sessionId == sessionId,
       send: () {
-        ChaptersRequest(
-          requestId: requestId,
+        OpenChaptersSession(
+          sessionId: sessionId,
           feedId: feedId,
           bookId: bookId,
         ).sendSignalToRust();
       },
     );
 
-    return (requestId: requestId, stream: stream);
+    final outcome = result.outcome;
+    if (outcome is OpenSessionOutcomeError) {
+      throw FeedPullException(message: outcome.message);
+    }
+    return sessionId;
+  }
+
+  Future<PullChapterOutcome> pullNextChapterInfo(String sessionId) {
+    return _subscribeAndSend(
+      responseStream: PullChapterResult.rustSignalStream,
+      matches: (message) => message.sessionId == sessionId,
+      send: () => PullNextRequest(sessionId: sessionId).sendSignalToRust(),
+    ).then((message) => message.outcome);
   }
 
   // -------------------------------------------------------------------------
@@ -263,25 +258,21 @@ class FeedService {
   }
 
   // -------------------------------------------------------------------------
-  // Chapter content
+  // Pull session: chapter content
   // -------------------------------------------------------------------------
 
-  /// Start a chapter-content stream.
-  ({String requestId, Stream<ParagraphContent> stream}) chapterContent({
+  Future<String> openParagraphsSession({
     required String feedId,
     required String bookId,
     required String chapterId,
-  }) {
-    final requestId = _nextId();
-
-    final stream = _buildStream<ParagraphContent>(
-      requestId: requestId,
-      itemStream: ChapterParagraphItem.rustSignalStream
-          .where((pack) => pack.message.requestId == requestId)
-          .map((pack) => pack.message.paragraph),
+  }) async {
+    final sessionId = _nextId();
+    final result = await _subscribeAndSend(
+      responseStream: OpenSessionResult.rustSignalStream,
+      matches: (message) => message.sessionId == sessionId,
       send: () {
-        ChapterContentRequest(
-          requestId: requestId,
+        OpenParagraphsSession(
+          sessionId: sessionId,
           feedId: feedId,
           bookId: bookId,
           chapterId: chapterId,
@@ -289,7 +280,19 @@ class FeedService {
       },
     );
 
-    return (requestId: requestId, stream: stream);
+    final outcome = result.outcome;
+    if (outcome is OpenSessionOutcomeError) {
+      throw FeedPullException(message: outcome.message);
+    }
+    return sessionId;
+  }
+
+  Future<PullParagraphOutcome> pullNextParagraph(String sessionId) {
+    return _subscribeAndSend(
+      responseStream: PullParagraphResult.rustSignalStream,
+      matches: (message) => message.sessionId == sessionId,
+      send: () => PullNextRequest(sessionId: sessionId).sendSignalToRust(),
+    ).then((message) => message.outcome);
   }
 
   // -------------------------------------------------------------------------
@@ -446,13 +449,11 @@ class FeedService {
   }
 
   // -------------------------------------------------------------------------
-  // Cancel
+  // Session close
   // -------------------------------------------------------------------------
 
-  /// Cancel an in-progress stream.  Rust will stop emitting items and send a
-  /// [FeedStreamEnd] with `outcome == FeedStreamOutcomeCancelled`.
-  void cancel(String requestId) {
-    FeedCancelRequest(requestId: requestId).sendSignalToRust();
+  void closeSession(String sessionId) {
+    CloseSessionRequest(sessionId: sessionId).sendSignalToRust();
   }
 
   // -------------------------------------------------------------------------
@@ -679,7 +680,7 @@ class FeedService {
         return FeedAuthStatusModel.loggedIn;
       }
       if (outcome is FeedAuthStatusOutcomeExpired) {
-        return FeedAuthStatusModel.loggedOut;
+        return FeedAuthStatusModel.expired;
       }
       if (outcome is FeedAuthStatusOutcomeLoggedOut) {
         return FeedAuthStatusModel.loggedOut;
@@ -714,58 +715,6 @@ class FeedService {
   // Internal helpers
   // -------------------------------------------------------------------------
 
-  /// Build a [Stream<T>] that:
-  /// - Emits items from [itemStream] as they arrive.
-  /// - Terminates (closes) when the matching [FeedStreamEnd] arrives.
-  /// - Throws a [FeedStreamException] if the outcome is `FeedStreamOutcomeFailed`.
-  Stream<T> _buildStream<T>({
-    required String requestId,
-    required Stream<T> itemStream,
-    required void Function() send,
-  }) {
-    late StreamController<T> controller;
-    StreamSubscription<T>? itemSub;
-    StreamSubscription<RustSignalPack<FeedStreamEnd>>? endSub;
-
-    controller = StreamController<T>(
-      onListen: () {
-        // Listen for items.
-        itemSub = itemStream.listen(
-          controller.add,
-          onError: controller.addError,
-        );
-
-        // Listen for the terminal signal.
-        endSub = FeedStreamEnd.rustSignalStream
-            .where((pack) => pack.message.requestId == requestId)
-            .listen((pack) {
-              final outcome = pack.message.outcome;
-              if (outcome is FeedStreamOutcomeFailed) {
-                controller.addError(
-                  FeedStreamException(
-                    requestId: requestId,
-                    message: outcome.error,
-                    retriedCount: outcome.retriedCount,
-                  ),
-                );
-              }
-              // Close regardless of outcome (completed / cancelled / failed).
-              controller.close();
-            });
-
-        send();
-      },
-      onCancel: () {
-        itemSub?.cancel();
-        endSub?.cancel();
-        // Also tell Rust to stop if the Dart side cancels.
-        cancel(requestId);
-      },
-    );
-
-    return controller.stream;
-  }
-
   Future<T> _subscribeAndSend<T>({
     required Stream<RustSignalPack<T>> responseStream,
     required bool Function(T message) matches,
@@ -793,20 +742,13 @@ class FeedService {
 // Exception
 // ---------------------------------------------------------------------------
 
-class FeedStreamException implements Exception {
-  const FeedStreamException({
-    required this.requestId,
-    required this.message,
-    required this.retriedCount,
-  });
+class FeedPullException implements Exception {
+  const FeedPullException({required this.message});
 
-  final String requestId;
   final String message;
-  final int retriedCount;
 
   @override
-  String toString() =>
-      'FeedStreamException[$requestId]: $message (retried $retriedCount times)';
+  String toString() => 'FeedPullException: $message';
 }
 
 class FeedPreviewException implements Exception {

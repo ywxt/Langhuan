@@ -96,7 +96,7 @@ class ChapterSlot {
 
 /// Extracts a human-readable message from an error object.
 String normalizeChapterErrorMessage(Object error) {
-  if (error is FeedStreamException) return error.message;
+  if (error is FeedPullException) return error.message;
 
   final text = error.toString().trim();
   if (text.isEmpty) return 'Unknown error';

@@ -5,12 +5,8 @@ import 'package:langhuan/src/bindings/signals/signals.dart';
 
 void main() {
   group('normalizeChapterErrorMessage', () {
-    test('uses FeedStreamException.message directly', () {
-      const error = FeedStreamException(
-        requestId: 'req-1',
-        message: 'HTTP request failed: timeout',
-        retriedCount: 0,
-      );
+    test('uses FeedPullException.message directly', () {
+      const error = FeedPullException(message: 'HTTP request failed: timeout');
 
       expect(
         normalizeChapterErrorMessage(error),

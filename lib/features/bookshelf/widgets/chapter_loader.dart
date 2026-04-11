@@ -10,7 +10,7 @@ import 'reader_types.dart';
 // Abstraction for chapter content fetching (enables testing)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Abstraction over [FeedService.chapterContent] and [FeedService.cancel].
+/// Abstraction over chapter-content fetching and cancellation.
 /// Inject a custom implementation for testing.
 abstract class ChapterContentProvider {
   ({String requestId, Stream<ParagraphContent> stream}) fetchChapter({
@@ -32,17 +32,43 @@ class _DefaultContentProvider implements ChapterContentProvider {
     required String bookId,
     required String chapterId,
   }) {
-    return FeedService.instance.chapterContent(
-      feedId: feedId,
-      bookId: bookId,
-      chapterId: chapterId,
-    );
+    final requestId =
+        'chapter-${DateTime.now().millisecondsSinceEpoch}-$chapterId';
+
+    Stream<ParagraphContent> stream() async* {
+      final sessionId = await FeedService.instance.openParagraphsSession(
+        feedId: feedId,
+        bookId: bookId,
+        chapterId: chapterId,
+      );
+      _sessionsByRequestId[requestId] = sessionId;
+
+      while (true) {
+        final outcome = await FeedService.instance.pullNextParagraph(sessionId);
+        if (outcome is PullParagraphOutcomeItem) {
+          yield outcome.paragraph;
+          continue;
+        }
+        if (outcome is PullParagraphOutcomeEnd) {
+          break;
+        }
+        final error = outcome as PullParagraphOutcomeError;
+        throw FeedPullException(message: error.message);
+      }
+    }
+
+    return (requestId: requestId, stream: stream());
   }
 
   @override
   void cancel(String requestId) {
-    FeedService.instance.cancel(requestId);
+    final sessionId = _sessionsByRequestId.remove(requestId);
+    if (sessionId != null) {
+      FeedService.instance.closeSession(sessionId);
+    }
   }
+
+  static final Map<String, String> _sessionsByRequestId = <String, String>{};
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -229,7 +255,6 @@ class ChapterLoader extends ChangeNotifier {
         chapterId: chapterId,
       );
 
-      // Update slot with requestId.
       _replaceSlot(chapterId, (s) => s.copyWith(requestId: requestId));
 
       final paragraphs = <ParagraphContent>[];

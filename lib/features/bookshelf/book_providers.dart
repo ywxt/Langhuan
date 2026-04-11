@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../src/bindings/signals/signals.dart';
@@ -48,38 +46,65 @@ class ChaptersState {
 }
 
 class ChaptersNotifier extends Notifier<ChaptersState> {
-  StreamSubscription<ChapterInfoModel>? _subscription;
+  int _runToken = 0;
 
   @override
   ChaptersState build() => const ChaptersState();
 
   Future<void> load({required String feedId, required String bookId}) async {
     await _cancelCurrent();
+    final runToken = ++_runToken;
 
     state = ChaptersState(feedId: feedId, bookId: bookId, isLoading: true);
 
-    final (:requestId, :stream) = FeedService.instance.chapters(
-      feedId: feedId,
-      bookId: bookId,
-    );
+    try {
+      final sessionId = await FeedService.instance.openChaptersSession(
+        feedId: feedId,
+        bookId: bookId,
+      );
+      if (runToken != _runToken) {
+        FeedService.instance.closeSession(sessionId);
+        return;
+      }
 
-    state = state.copyWith(requestId: () => requestId);
+      state = state.copyWith(requestId: () => sessionId);
 
-    _subscription = stream.listen(
-      (item) {
-        state = state.copyWith(items: [...state.items, item]);
-      },
-      onError: (Object err) {
+      while (runToken == _runToken) {
+        final outcome = await FeedService.instance.pullNextChapterInfo(
+          sessionId,
+        );
+        if (outcome is PullChapterOutcomeItem) {
+          state = state.copyWith(
+            items: [
+              ...state.items,
+              ChapterInfoModel(
+                id: outcome.id,
+                title: outcome.title,
+                index: outcome.index,
+              ),
+            ],
+          );
+          continue;
+        }
+        if (outcome is PullChapterOutcomeEnd) {
+          break;
+        }
+        final error = outcome as PullChapterOutcomeError;
+        throw FeedPullException(message: error.message);
+      }
+
+      if (runToken == _runToken) {
+        state = state.copyWith(isLoading: false, requestId: () => null);
+      }
+    } catch (err) {
+      if (runToken == _runToken) {
         state = state.copyWith(
           isLoading: false,
           error: () => err,
           requestId: () => null,
         );
-      },
-      onDone: () {
-        state = state.copyWith(isLoading: false, requestId: () => null);
-      },
-    );
+      }
+    }
   }
 
   Future<void> cancel() async => _cancelCurrent();
@@ -91,9 +116,9 @@ class ChaptersNotifier extends Notifier<ChaptersState> {
 
   Future<void> _cancelCurrent() async {
     final id = state.requestId;
-    if (id != null) FeedService.instance.cancel(id);
-    await _subscription?.cancel();
-    _subscription = null;
+    if (id != null) FeedService.instance.closeSession(id);
+    _runToken++;
+    state = state.copyWith(isLoading: false, requestId: () => null);
   }
 }
 
@@ -220,7 +245,7 @@ class ChapterContentState {
 }
 
 class ChapterContentNotifier extends Notifier<ChapterContentState> {
-  StreamSubscription<ParagraphContent>? _subscription;
+  int _runToken = 0;
 
   @override
   ChapterContentState build() => const ChapterContentState();
@@ -231,6 +256,7 @@ class ChapterContentNotifier extends Notifier<ChapterContentState> {
     required String chapterId,
   }) async {
     await _cancelCurrent();
+    final runToken = ++_runToken;
 
     state = ChapterContentState(
       feedId: feedId,
@@ -239,29 +265,44 @@ class ChapterContentNotifier extends Notifier<ChapterContentState> {
       isLoading: true,
     );
 
-    final (:requestId, :stream) = FeedService.instance.chapterContent(
-      feedId: feedId,
-      bookId: bookId,
-      chapterId: chapterId,
-    );
+    try {
+      final sessionId = await FeedService.instance.openParagraphsSession(
+        feedId: feedId,
+        bookId: bookId,
+        chapterId: chapterId,
+      );
+      if (runToken != _runToken) {
+        FeedService.instance.closeSession(sessionId);
+        return;
+      }
 
-    state = state.copyWith(requestId: () => requestId);
+      state = state.copyWith(requestId: () => sessionId);
 
-    _subscription = stream.listen(
-      (item) {
-        state = state.copyWith(items: [...state.items, item]);
-      },
-      onError: (Object err) {
+      while (runToken == _runToken) {
+        final outcome = await FeedService.instance.pullNextParagraph(sessionId);
+        if (outcome is PullParagraphOutcomeItem) {
+          state = state.copyWith(items: [...state.items, outcome.paragraph]);
+          continue;
+        }
+        if (outcome is PullParagraphOutcomeEnd) {
+          break;
+        }
+        final error = outcome as PullParagraphOutcomeError;
+        throw FeedPullException(message: error.message);
+      }
+
+      if (runToken == _runToken) {
+        state = state.copyWith(isLoading: false, requestId: () => null);
+      }
+    } catch (err) {
+      if (runToken == _runToken) {
         state = state.copyWith(
           isLoading: false,
           error: () => err,
           requestId: () => null,
         );
-      },
-      onDone: () {
-        state = state.copyWith(isLoading: false, requestId: () => null);
-      },
-    );
+      }
+    }
   }
 
   Future<void> cancel() async => _cancelCurrent();
@@ -281,9 +322,9 @@ class ChapterContentNotifier extends Notifier<ChapterContentState> {
 
   Future<void> _cancelCurrent() async {
     final id = state.requestId;
-    if (id != null) FeedService.instance.cancel(id);
-    await _subscription?.cancel();
-    _subscription = null;
+    if (id != null) FeedService.instance.closeSession(id);
+    _runToken++;
+    state = state.copyWith(isLoading: false, requestId: () => null);
   }
 }
 

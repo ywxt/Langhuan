@@ -227,6 +227,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get feedAuthStatusLoggedOut => '未登錄';
 
   @override
+  String get feedAuthStatusExpired => '登錄已過期';
+
+  @override
   String get feedAuthStatusUnsupported => '不支持';
 
   @override

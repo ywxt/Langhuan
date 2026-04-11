@@ -146,10 +146,15 @@ class FeedCard extends ConsumerWidget {
             theme.colorScheme.onTertiaryContainer,
             theme.colorScheme.tertiaryContainer,
           ),
-          FeedAuthStatusModel.loggedOut => (
-            l10n.feedAuthStatusLoggedOut,
+          FeedAuthStatusModel.expired => (
+            l10n.feedAuthStatusExpired,
             theme.colorScheme.onErrorContainer,
             theme.colorScheme.errorContainer,
+          ),
+          FeedAuthStatusModel.loggedOut => (
+            l10n.feedAuthStatusLoggedOut,
+            theme.colorScheme.onSurfaceVariant,
+            theme.colorScheme.surfaceContainerHighest,
           ),
           FeedAuthStatusModel.unsupported => (
             l10n.feedAuthStatusUnsupported,

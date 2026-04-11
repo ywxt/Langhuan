@@ -241,6 +241,9 @@
   "feedAuthStatusLoggedOut": "Logged out",
   "@feedAuthStatusLoggedOut": { "description": "Feed auth status when logged out" },
 
+  "feedAuthStatusExpired": "Expired",
+  "@feedAuthStatusExpired": { "description": "Feed auth status when login has expired" },
+
   "feedAuthStatusUnsupported": "Unsupported",
   "@feedAuthStatusUnsupported": { "description": "Feed auth status when auth is not supported" },
 

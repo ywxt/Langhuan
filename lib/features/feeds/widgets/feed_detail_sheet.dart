@@ -206,6 +206,7 @@ class _FeedDetailContentState extends State<_FeedDetailContent> {
                 label: l10n.feedAuthLabel,
                 value: switch (_authStatus) {
                   FeedAuthStatusModel.loggedIn => l10n.feedAuthStatusLoggedIn,
+                  FeedAuthStatusModel.expired => l10n.feedAuthStatusExpired,
                   FeedAuthStatusModel.loggedOut => l10n.feedAuthStatusLoggedOut,
                   FeedAuthStatusModel.unsupported =>
                     l10n.feedAuthStatusUnsupported,

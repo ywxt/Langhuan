@@ -1,131 +1,281 @@
-//! [`StreamActor`] — manages feed stream requests from Dart.
+//! [`StreamActor`] — manages pull-based feed sessions from Dart.
 //!
-//! # Responsibilities
-//! - Accept `SearchRequest`, `ChaptersRequest`, `ChapterContentRequest` from Dart.
-//! - Accept `BookInfoRequest` from Dart.
-//! - Launch each request as an independent async task identified by `request_id`.
-//! - Support concurrent in-flight requests (multiple parallel streams).
-//! - Accept `FeedCancelRequest` from Dart and abort the matching task.
-//! - Emit per-item signals and a terminal `FeedStreamEnd` for every request.
-//!
-//! # Feed resolution
-//! The actor does not own the script registry.  Instead it holds an
-//! [`Address<RegistryActor>`] and sends a [`GetFeed`] handler message to
-//! resolve a pre-compiled [`LuaFeed`] on demand.
+//! `PullNextRequest` is the only operation that advances feed streams.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use langhuan::cache::CachedFeed;
 use langhuan::feed::Feed;
+use langhuan::model::{ChapterInfo, Paragraph, SearchResult};
 use langhuan::script::lua::LuaFeed;
 use messages::prelude::{Actor, Address, Context, Notifiable};
 use rinf::{DartSignal, RustSignal};
-use tokio::task::JoinSet;
+use tokio::sync::{mpsc, oneshot};
+use tokio::task::{AbortHandle, JoinSet};
 use tokio_stream::StreamExt;
-use tokio_util::task::JoinMap;
 
 use crate::localize_error;
 use crate::signals::{
-    BookInfoOutcome, BookInfoRequest, BookInfoResult, ChapterContentRequest, ChapterInfoItem,
-    ChapterParagraphItem, ChaptersRequest, FeedCancelRequest, FeedStreamEnd, FeedStreamOutcome,
-    ParagraphContent, SearchRequest, SearchResultItem,
+    BookInfoOutcome, BookInfoRequest, BookInfoResult, CloseSessionRequest, OpenChaptersSession,
+    OpenParagraphsSession, OpenSearchSession, OpenSessionOutcome, OpenSessionResult,
+    ParagraphContent, PullChapterOutcome, PullChapterResult, PullNextRequest,
+    PullParagraphOutcome, PullParagraphResult, PullSearchOutcome, PullSearchResult,
 };
 
 use super::registry_actor::{GetFeed, RegistryActor};
 
-// ---------------------------------------------------------------------------
-// StreamActor
-// ---------------------------------------------------------------------------
+#[derive(Clone, Copy)]
+enum SessionType {
+    Search,
+    Chapters,
+    Paragraphs,
+}
 
-/// Manages the lifecycle of all in-flight feed streams.
+enum PullTrigger {
+    Next(oneshot::Sender<PullReply>),
+}
+
+enum PullReply {
+    SearchItem(SearchResult),
+    ChapterItem(ChapterInfo),
+    ParagraphItem(Paragraph),
+    End,
+    Error { message: String },
+}
+
+struct PullSession {
+    session_type: SessionType,
+    trigger_tx: mpsc::Sender<PullTrigger>,
+    abort_handle: AbortHandle,
+}
+
+/// Manages the lifecycle of all in-flight pull sessions.
 pub struct StreamActor {
-    /// Address of the [`RegistryActor`] used to resolve feeds.
     registry_addr: Address<RegistryActor>,
-    /// Live stream tasks keyed by `request_id`.
-    /// Inserting a duplicate key automatically aborts the previous task.
-    stream_tasks: JoinMap<String, ()>,
-    /// Owned tasks that are canceled when the actor is dropped.
+    sessions: HashMap<String, PullSession>,
     _owned_tasks: JoinSet<()>,
 }
 
 impl Actor for StreamActor {}
 
 impl StreamActor {
-    /// Creates the actor and spawns listener tasks for all stream-related
-    /// Dart signal types.
     pub fn new(self_addr: Address<Self>, registry_addr: Address<RegistryActor>) -> Self {
         let mut _owned_tasks = JoinSet::new();
-        _owned_tasks.spawn(Self::listen_to_search(self_addr.clone()));
-        _owned_tasks.spawn(Self::listen_to_chapters(self_addr.clone()));
-        _owned_tasks.spawn(Self::listen_to_chapter_content(self_addr.clone()));
-        _owned_tasks.spawn(Self::listen_to_book_info(self_addr.clone()));
-        _owned_tasks.spawn(Self::listen_to_cancel(self_addr));
+        _owned_tasks.spawn(Self::listen_to_open_search(self_addr.clone()));
+        _owned_tasks.spawn(Self::listen_to_open_chapters(self_addr.clone()));
+        _owned_tasks.spawn(Self::listen_to_open_paragraphs(self_addr.clone()));
+        _owned_tasks.spawn(Self::listen_to_pull_next(self_addr.clone()));
+        _owned_tasks.spawn(Self::listen_to_close(self_addr.clone()));
+        _owned_tasks.spawn(Self::listen_to_book_info(self_addr));
+
         Self {
             registry_addr,
-            stream_tasks: JoinMap::new(),
+            sessions: HashMap::new(),
             _owned_tasks,
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Stream request handlers
-    // -----------------------------------------------------------------------
+    async fn do_open_search(&mut self, req: OpenSearchSession) {
+        tracing::debug!(session_id = %req.session_id, feed_id = %req.feed_id, "open search session");
 
-    /// Handle an incoming `SearchRequest` from Dart.
-    async fn do_search(&mut self, req: SearchRequest) {
-        tracing::debug!(request_id = %req.request_id, feed_id = %req.feed_id, "received search request");
-        let request_id = req.request_id.clone();
-        let feed = match self.resolve_feed(&req.feed_id).await {
+        let feed = match self.resolve_feed_result(&req.feed_id).await {
             Ok(feed) => feed,
-            Err(outcome) => {
-                emit_end(&request_id, outcome);
+            Err(message) => {
+                OpenSessionResult {
+                    session_id: req.session_id,
+                    outcome: OpenSessionOutcome::Error { message },
+                }
+                .send_signal_to_dart();
                 return;
             }
         };
 
-        self.stream_tasks.spawn(request_id, async move {
-            run_search(feed, req).await;
+        let session_id = req.session_id;
+        self.replace_existing_session(&session_id);
+
+        let (trigger_tx, mut trigger_rx) = mpsc::channel::<PullTrigger>(1);
+        let task = tokio::spawn(async move {
+            let mut stream = feed.search(&req.keyword);
+            while let Some(PullTrigger::Next(reply_tx)) = trigger_rx.recv().await {
+                let reply = match stream.next().await {
+                    Some(Ok(item)) => PullReply::SearchItem(item),
+                    Some(Err(e)) => PullReply::Error {
+                        message: localize_error(&e),
+                    },
+                    None => PullReply::End,
+                };
+                let terminal = matches!(reply, PullReply::End | PullReply::Error { .. });
+                let _ = reply_tx.send(reply);
+                if terminal {
+                    break;
+                }
+            }
         });
+
+        self.sessions.insert(
+            session_id.clone(),
+            PullSession {
+                session_type: SessionType::Search,
+                trigger_tx,
+                abort_handle: task.abort_handle(),
+            },
+        );
+
+        OpenSessionResult {
+            session_id,
+            outcome: OpenSessionOutcome::Ok,
+        }
+        .send_signal_to_dart();
     }
 
-    /// Handle an incoming `ChaptersRequest` from Dart.
-    async fn do_chapters(&mut self, req: ChaptersRequest) {
-        tracing::debug!(request_id = %req.request_id, feed_id = %req.feed_id, book_id = %req.book_id, "received chapters request");
-        let request_id = req.request_id.clone();
-        let feed = match self.resolve_feed(&req.feed_id).await {
+    async fn do_open_chapters(&mut self, req: OpenChaptersSession) {
+        tracing::debug!(session_id = %req.session_id, feed_id = %req.feed_id, book_id = %req.book_id, "open chapters session");
+
+        let feed = match self.resolve_feed_result(&req.feed_id).await {
             Ok(feed) => feed,
-            Err(outcome) => {
-                emit_end(&request_id, outcome);
+            Err(message) => {
+                OpenSessionResult {
+                    session_id: req.session_id,
+                    outcome: OpenSessionOutcome::Error { message },
+                }
+                .send_signal_to_dart();
                 return;
             }
         };
 
-        self.stream_tasks.spawn(request_id, async move {
-            run_chapters(feed, req).await;
+        let session_id = req.session_id;
+        self.replace_existing_session(&session_id);
+
+        let (trigger_tx, mut trigger_rx) = mpsc::channel::<PullTrigger>(1);
+        let task = tokio::spawn(async move {
+            let mut stream = feed.chapters(&req.book_id);
+            while let Some(PullTrigger::Next(reply_tx)) = trigger_rx.recv().await {
+                let reply = match stream.next().await {
+                    Some(Ok(item)) => PullReply::ChapterItem(item),
+                    Some(Err(e)) => PullReply::Error {
+                        message: localize_error(&e),
+                    },
+                    None => PullReply::End,
+                };
+                let terminal = matches!(reply, PullReply::End | PullReply::Error { .. });
+                let _ = reply_tx.send(reply);
+                if terminal {
+                    break;
+                }
+            }
         });
+
+        self.sessions.insert(
+            session_id.clone(),
+            PullSession {
+                session_type: SessionType::Chapters,
+                trigger_tx,
+                abort_handle: task.abort_handle(),
+            },
+        );
+
+        OpenSessionResult {
+            session_id,
+            outcome: OpenSessionOutcome::Ok,
+        }
+        .send_signal_to_dart();
     }
 
-    /// Handle an incoming `ChapterContentRequest` from Dart.
-    async fn do_chapter_content(&mut self, req: ChapterContentRequest) {
-        tracing::debug!(request_id = %req.request_id, feed_id = %req.feed_id, book_id = %req.book_id, chapter_id = %req.chapter_id, "received chapter content request");
-        let request_id = req.request_id.clone();
-        let feed = match self.resolve_feed(&req.feed_id).await {
+    async fn do_open_paragraphs(&mut self, req: OpenParagraphsSession) {
+        tracing::debug!(session_id = %req.session_id, feed_id = %req.feed_id, book_id = %req.book_id, chapter_id = %req.chapter_id, "open paragraphs session");
+
+        let feed = match self.resolve_feed_result(&req.feed_id).await {
             Ok(feed) => feed,
-            Err(outcome) => {
-                emit_end(&request_id, outcome);
+            Err(message) => {
+                OpenSessionResult {
+                    session_id: req.session_id,
+                    outcome: OpenSessionOutcome::Error { message },
+                }
+                .send_signal_to_dart();
                 return;
             }
         };
 
-        self.stream_tasks.spawn(request_id, async move {
-            run_chapter_content(feed, req).await;
+        let session_id = req.session_id;
+        self.replace_existing_session(&session_id);
+
+        let (trigger_tx, mut trigger_rx) = mpsc::channel::<PullTrigger>(1);
+        let task = tokio::spawn(async move {
+            let mut stream = feed.paragraphs(&req.book_id, &req.chapter_id);
+            while let Some(PullTrigger::Next(reply_tx)) = trigger_rx.recv().await {
+                let reply = match stream.next().await {
+                    Some(Ok(item)) => PullReply::ParagraphItem(item),
+                    Some(Err(e)) => PullReply::Error {
+                        message: localize_error(&e),
+                    },
+                    None => PullReply::End,
+                };
+                let terminal = matches!(reply, PullReply::End | PullReply::Error { .. });
+                let _ = reply_tx.send(reply);
+                if terminal {
+                    break;
+                }
+            }
         });
+
+        self.sessions.insert(
+            session_id.clone(),
+            PullSession {
+                session_type: SessionType::Paragraphs,
+                trigger_tx,
+                abort_handle: task.abort_handle(),
+            },
+        );
+
+        OpenSessionResult {
+            session_id,
+            outcome: OpenSessionOutcome::Ok,
+        }
+        .send_signal_to_dart();
     }
 
-    /// Handle an incoming `BookInfoRequest` from Dart.
+    async fn do_pull_next(&mut self, req: PullNextRequest) {
+        tracing::debug!(session_id = %req.session_id, "pull next");
+
+        let Some(session) = self.sessions.get(&req.session_id) else {
+            return;
+        };
+
+        let session_type = session.session_type;
+        let trigger_tx = session.trigger_tx.clone();
+
+        let (reply_tx, reply_rx) = oneshot::channel::<PullReply>();
+        if trigger_tx.send(PullTrigger::Next(reply_tx)).await.is_err() {
+            self.sessions.remove(&req.session_id);
+            return;
+        }
+
+        let reply = match reply_rx.await {
+            Ok(reply) => reply,
+            Err(_) => {
+                self.sessions.remove(&req.session_id);
+                return;
+            }
+        };
+
+        let terminal = matches!(reply, PullReply::End | PullReply::Error { .. });
+        self.emit_pull_reply(&req.session_id, session_type, reply);
+        if terminal {
+            self.sessions.remove(&req.session_id);
+        }
+    }
+
+    fn do_close_session(&mut self, req: CloseSessionRequest) {
+        tracing::debug!(session_id = %req.session_id, "close session");
+        if let Some(session) = self.sessions.remove(&req.session_id) {
+            session.abort_handle.abort();
+        }
+    }
+
     async fn do_book_info(&mut self, req: BookInfoRequest) -> BookInfoResult {
-        tracing::debug!(feed_id = %req.feed_id, book_id = %req.book_id, "received book info request");
+        tracing::debug!(feed_id = %req.feed_id, book_id = %req.book_id, "book info");
         match self.resolve_feed_result(&req.feed_id).await {
             Ok(feed) => run_book_info(&feed, req).await,
             Err(message) => BookInfoResult {
@@ -134,23 +284,88 @@ impl StreamActor {
         }
     }
 
-    /// Cancel the task identified by `request_id`, if it is still running.
-    fn do_cancel(&mut self, req: FeedCancelRequest) -> Option<FeedStreamEnd> {
-        tracing::debug!(request_id = %req.request_id, "received stream cancel request");
-        self.stream_tasks
-            .abort(&req.request_id)
-            .then_some(FeedStreamEnd {
-                request_id: req.request_id,
-                outcome: FeedStreamOutcome::Cancelled,
-            })
+    fn replace_existing_session(&mut self, session_id: &str) {
+        if let Some(existing) = self.sessions.remove(session_id) {
+            existing.abort_handle.abort();
+        }
     }
 
-    // -----------------------------------------------------------------------
-    // Internal helpers
-    // -----------------------------------------------------------------------
+    fn emit_pull_reply(&self, session_id: &str, session_type: SessionType, reply: PullReply) {
+        match (session_type, reply) {
+            (SessionType::Search, PullReply::SearchItem(item)) => PullSearchResult {
+                session_id: session_id.to_owned(),
+                outcome: PullSearchOutcome::Item {
+                    id: item.id,
+                    title: item.title,
+                    author: item.author,
+                    cover_url: item.cover_url,
+                    description: item.description,
+                },
+            }
+            .send_signal_to_dart(),
+            (SessionType::Search, PullReply::End) => PullSearchResult {
+                session_id: session_id.to_owned(),
+                outcome: PullSearchOutcome::End,
+            }
+            .send_signal_to_dart(),
+            (SessionType::Search, PullReply::Error { message }) => PullSearchResult {
+                session_id: session_id.to_owned(),
+                outcome: PullSearchOutcome::Error { message },
+            }
+            .send_signal_to_dart(),
 
-    /// Resolve a pre-compiled [`LuaFeed`] by sending a [`GetFeed`] message to
-    /// the [`RegistryActor`].
+            (SessionType::Chapters, PullReply::ChapterItem(item)) => PullChapterResult {
+                session_id: session_id.to_owned(),
+                outcome: PullChapterOutcome::Item {
+                    id: item.id,
+                    title: item.title,
+                    index: item.index,
+                },
+            }
+            .send_signal_to_dart(),
+            (SessionType::Chapters, PullReply::End) => PullChapterResult {
+                session_id: session_id.to_owned(),
+                outcome: PullChapterOutcome::End,
+            }
+            .send_signal_to_dart(),
+            (SessionType::Chapters, PullReply::Error { message }) => PullChapterResult {
+                session_id: session_id.to_owned(),
+                outcome: PullChapterOutcome::Error { message },
+            }
+            .send_signal_to_dart(),
+
+            (SessionType::Paragraphs, PullReply::ParagraphItem(paragraph)) => {
+                let paragraph = match paragraph {
+                    Paragraph::Title { text } => ParagraphContent::Title { text },
+                    Paragraph::Text { content } => ParagraphContent::Text { content },
+                    Paragraph::Image { url, alt } => ParagraphContent::Image { url, alt },
+                };
+                PullParagraphResult {
+                    session_id: session_id.to_owned(),
+                    outcome: PullParagraphOutcome::Item { paragraph },
+                }
+                .send_signal_to_dart();
+            }
+            (SessionType::Paragraphs, PullReply::End) => PullParagraphResult {
+                session_id: session_id.to_owned(),
+                outcome: PullParagraphOutcome::End,
+            }
+            .send_signal_to_dart(),
+            (SessionType::Paragraphs, PullReply::Error { message }) => PullParagraphResult {
+                session_id: session_id.to_owned(),
+                outcome: PullParagraphOutcome::Error { message },
+            }
+            .send_signal_to_dart(),
+
+            (SessionType::Search, PullReply::ChapterItem(_))
+            | (SessionType::Search, PullReply::ParagraphItem(_))
+            | (SessionType::Chapters, PullReply::SearchItem(_))
+            | (SessionType::Chapters, PullReply::ParagraphItem(_))
+            | (SessionType::Paragraphs, PullReply::SearchItem(_))
+            | (SessionType::Paragraphs, PullReply::ChapterItem(_)) => {}
+        }
+    }
+
     async fn resolve_feed_result(
         &mut self,
         feed_id: &str,
@@ -168,44 +383,40 @@ impl StreamActor {
             Err(e) => Err(format!("internal error: {e}")),
         }
     }
-
-    /// Resolve a pre-compiled [`LuaFeed`] by sending a [`GetFeed`] message to
-    /// the [`RegistryActor`].
-    async fn resolve_feed(
-        &mut self,
-        feed_id: &str,
-    ) -> Result<Arc<CachedFeed<LuaFeed>>, FeedStreamOutcome> {
-        self.resolve_feed_result(feed_id)
-            .await
-            .map_err(|message| FeedStreamOutcome::Failed {
-                error: message,
-                retried_count: 0,
-            })
-    }
 }
 
-// ---------------------------------------------------------------------------
-// Notifiable impls
-// ---------------------------------------------------------------------------
-
 #[async_trait]
-impl Notifiable<SearchRequest> for StreamActor {
-    async fn notify(&mut self, msg: SearchRequest, _: &Context<Self>) {
-        self.do_search(msg).await;
+impl Notifiable<OpenSearchSession> for StreamActor {
+    async fn notify(&mut self, msg: OpenSearchSession, _: &Context<Self>) {
+        self.do_open_search(msg).await;
     }
 }
 
 #[async_trait]
-impl Notifiable<ChaptersRequest> for StreamActor {
-    async fn notify(&mut self, msg: ChaptersRequest, _: &Context<Self>) {
-        self.do_chapters(msg).await;
+impl Notifiable<OpenChaptersSession> for StreamActor {
+    async fn notify(&mut self, msg: OpenChaptersSession, _: &Context<Self>) {
+        self.do_open_chapters(msg).await;
     }
 }
 
 #[async_trait]
-impl Notifiable<ChapterContentRequest> for StreamActor {
-    async fn notify(&mut self, msg: ChapterContentRequest, _: &Context<Self>) {
-        self.do_chapter_content(msg).await;
+impl Notifiable<OpenParagraphsSession> for StreamActor {
+    async fn notify(&mut self, msg: OpenParagraphsSession, _: &Context<Self>) {
+        self.do_open_paragraphs(msg).await;
+    }
+}
+
+#[async_trait]
+impl Notifiable<PullNextRequest> for StreamActor {
+    async fn notify(&mut self, msg: PullNextRequest, _: &Context<Self>) {
+        self.do_pull_next(msg).await;
+    }
+}
+
+#[async_trait]
+impl Notifiable<CloseSessionRequest> for StreamActor {
+    async fn notify(&mut self, msg: CloseSessionRequest, _: &Context<Self>) {
+        self.do_close_session(msg);
     }
 }
 
@@ -216,36 +427,37 @@ impl Notifiable<BookInfoRequest> for StreamActor {
     }
 }
 
-#[async_trait]
-impl Notifiable<FeedCancelRequest> for StreamActor {
-    async fn notify(&mut self, msg: FeedCancelRequest, _: &Context<Self>) {
-        if let Some(signal) = self.do_cancel(msg) {
-            signal.send_signal_to_dart();
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Dart signal listeners
-// ---------------------------------------------------------------------------
-
 impl StreamActor {
-    async fn listen_to_search(mut self_addr: Address<Self>) {
-        let receiver = SearchRequest::get_dart_signal_receiver();
+    async fn listen_to_open_search(mut self_addr: Address<Self>) {
+        let receiver = OpenSearchSession::get_dart_signal_receiver();
         while let Some(signal_pack) = receiver.recv().await {
             let _ = self_addr.notify(signal_pack.message).await;
         }
     }
 
-    async fn listen_to_chapters(mut self_addr: Address<Self>) {
-        let receiver = ChaptersRequest::get_dart_signal_receiver();
+    async fn listen_to_open_chapters(mut self_addr: Address<Self>) {
+        let receiver = OpenChaptersSession::get_dart_signal_receiver();
         while let Some(signal_pack) = receiver.recv().await {
             let _ = self_addr.notify(signal_pack.message).await;
         }
     }
 
-    async fn listen_to_chapter_content(mut self_addr: Address<Self>) {
-        let receiver = ChapterContentRequest::get_dart_signal_receiver();
+    async fn listen_to_open_paragraphs(mut self_addr: Address<Self>) {
+        let receiver = OpenParagraphsSession::get_dart_signal_receiver();
+        while let Some(signal_pack) = receiver.recv().await {
+            let _ = self_addr.notify(signal_pack.message).await;
+        }
+    }
+
+    async fn listen_to_pull_next(mut self_addr: Address<Self>) {
+        let receiver = PullNextRequest::get_dart_signal_receiver();
+        while let Some(signal_pack) = receiver.recv().await {
+            let _ = self_addr.notify(signal_pack.message).await;
+        }
+    }
+
+    async fn listen_to_close(mut self_addr: Address<Self>) {
+        let receiver = CloseSessionRequest::get_dart_signal_receiver();
         while let Some(signal_pack) = receiver.recv().await {
             let _ = self_addr.notify(signal_pack.message).await;
         }
@@ -257,95 +469,6 @@ impl StreamActor {
             let _ = self_addr.notify(signal_pack.message).await;
         }
     }
-
-    async fn listen_to_cancel(mut self_addr: Address<Self>) {
-        let receiver = FeedCancelRequest::get_dart_signal_receiver();
-        while let Some(signal_pack) = receiver.recv().await {
-            let _ = self_addr.notify(signal_pack.message).await;
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Task implementations (run inside `tokio::spawn`)
-// ---------------------------------------------------------------------------
-
-/// Emit a [`FeedStreamEnd`] signal with the given outcome.
-fn emit_end(request_id: &str, outcome: FeedStreamOutcome) {
-    FeedStreamEnd {
-        request_id: request_id.to_owned(),
-        outcome,
-    }
-    .send_signal_to_dart();
-}
-
-/// Generic stream driver shared by all three `run_*` functions.
-async fn run_stream<T, F, S>(
-    request_id: String,
-    mut stream: langhuan::feed::FeedStream<'_, T>,
-    mut emit_item: F,
-) where
-    F: FnMut(T) -> S,
-    S: RustSignal,
-{
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(value) => emit_item(value).send_signal_to_dart(),
-            Err(e) => {
-                emit_end(
-                    &request_id,
-                    FeedStreamOutcome::Failed {
-                        error: localize_error(&e),
-                        retried_count: 0,
-                    },
-                );
-                return;
-            }
-        }
-    }
-    emit_end(&request_id, FeedStreamOutcome::Completed);
-}
-
-async fn run_search(feed: Arc<CachedFeed<LuaFeed>>, req: SearchRequest) {
-    let stream = feed.search(&req.keyword);
-    run_stream(req.request_id.clone(), stream, |result| SearchResultItem {
-        request_id: req.request_id.clone(),
-        id: result.id,
-        title: result.title,
-        author: result.author,
-        cover_url: result.cover_url,
-        description: result.description,
-    })
-    .await;
-}
-
-async fn run_chapters(feed: Arc<CachedFeed<LuaFeed>>, req: ChaptersRequest) {
-    let stream = feed.chapters(&req.book_id);
-    run_stream(req.request_id.clone(), stream, |chapter| ChapterInfoItem {
-        request_id: req.request_id.clone(),
-        id: chapter.id,
-        title: chapter.title,
-        index: chapter.index,
-    })
-    .await;
-}
-
-async fn run_chapter_content(feed: Arc<CachedFeed<LuaFeed>>, req: ChapterContentRequest) {
-    use langhuan::model::Paragraph;
-
-    let stream = feed.paragraphs(&req.book_id, &req.chapter_id);
-    run_stream(req.request_id.clone(), stream, |paragraph| {
-        let content = match paragraph {
-            Paragraph::Title { text } => ParagraphContent::Title { text },
-            Paragraph::Text { content } => ParagraphContent::Text { content },
-            Paragraph::Image { url, alt } => ParagraphContent::Image { url, alt },
-        };
-        ChapterParagraphItem {
-            request_id: req.request_id.clone(),
-            paragraph: content,
-        }
-    })
-    .await;
 }
 
 async fn run_book_info(feed: &CachedFeed<LuaFeed>, req: BookInfoRequest) -> BookInfoResult {

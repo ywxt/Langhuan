@@ -40,11 +40,7 @@ class MockContentProvider implements ChapterContentProvider {
       return (
         requestId: requestId,
         stream: Stream.error(
-          FeedStreamException(
-            requestId: requestId,
-            message: 'Mock error for $chapterId',
-            retriedCount: 0,
-          ),
+          FeedPullException(message: 'Mock error for $chapterId'),
         ),
       );
     }
@@ -168,7 +164,7 @@ void main() {
 
       await expectLater(
         () => loader.loadInitial('ch-1'),
-        throwsA(isA<FeedStreamException>()),
+        throwsA(isA<FeedPullException>()),
       );
 
       loader.dispose();

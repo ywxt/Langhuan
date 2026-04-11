@@ -506,6 +506,12 @@ abstract class AppLocalizations {
   /// **'Logged out'**
   String get feedAuthStatusLoggedOut;
 
+  /// Feed auth status when login has expired
+  ///
+  /// In en, this message translates to:
+  /// **'Expired'**
+  String get feedAuthStatusExpired;
+
   /// Feed auth status when auth is not supported
   ///
   /// In en, this message translates to:
