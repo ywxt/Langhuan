@@ -17,6 +17,7 @@ abstract class ChapterContentProvider {
     required String feedId,
     required String bookId,
     required String chapterId,
+    bool forceRefresh,
   });
 
   void cancel(String requestId);
@@ -31,6 +32,7 @@ class _DefaultContentProvider implements ChapterContentProvider {
     required String feedId,
     required String bookId,
     required String chapterId,
+    bool forceRefresh = false,
   }) {
     final requestId =
         'chapter-${DateTime.now().millisecondsSinceEpoch}-$chapterId';
@@ -39,6 +41,7 @@ class _DefaultContentProvider implements ChapterContentProvider {
       feedId: feedId,
       bookId: bookId,
       chapterId: chapterId,
+      forceRefresh: forceRefresh,
     );
 
     return (requestId: requestId, stream: stream);
@@ -154,7 +157,7 @@ class ChapterLoader extends ChangeNotifier {
   /// Throws on failure so the caller can show a retry UI.
   Future<void> loadInitial(String chapterId) async {
     _currentChapterId = chapterId;
-    await _loadChapter(chapterId, rethrow_: true);
+    await _loadChapter(chapterId, rethrow_: true, forceRefresh: false);
 
     // Preload adjacent — failures are silent.
     await Future.wait([_preloadPrev(), _preloadNext()], eagerError: false);
@@ -162,14 +165,21 @@ class ChapterLoader extends ChangeNotifier {
 
   /// Preload a chapter.  Failures are stored in the slot (inline error).
   Future<void> preloadChapter(String chapterId) async {
-    await _loadChapter(chapterId, rethrow_: false);
+    await _loadChapter(chapterId, rethrow_: false, forceRefresh: false);
   }
 
   /// Retry a failed chapter.
   Future<void> retryChapter(String chapterId) async {
     _cancelSlot(chapterId);
     _removeSlot(chapterId);
-    await _loadChapter(chapterId, rethrow_: false);
+    await _loadChapter(chapterId, rethrow_: false, forceRefresh: false);
+  }
+
+  /// Force refresh a specific chapter by bypassing cache once.
+  Future<void> refreshChapter(String chapterId) async {
+    _cancelSlot(chapterId);
+    _removeSlot(chapterId);
+    await _loadChapter(chapterId, rethrow_: false, forceRefresh: true);
   }
 
   /// Update the current chapter and trigger preloading + eviction.
@@ -208,8 +218,11 @@ class ChapterLoader extends ChangeNotifier {
   }
 
   // ─ Internal loading ──────────────────────────────────────────────────────
-
-  Future<void> _loadChapter(String chapterId, {required bool rethrow_}) async {
+  Future<void> _loadChapter(
+    String chapterId, {
+    required bool rethrow_,
+    required bool forceRefresh,
+  }) async {
     if (_disposed) return;
     if (getSlot(chapterId) != null) return;
 
@@ -232,6 +245,7 @@ class ChapterLoader extends ChangeNotifier {
         feedId: feedId,
         bookId: bookId,
         chapterId: chapterId,
+        forceRefresh: forceRefresh,
       );
 
       _replaceSlot(chapterId, (s) => s.copyWith(requestId: requestId));

@@ -11,9 +11,16 @@ import 'page_breaker.dart';
 /// Text paragraphs respect the optional [PageItem.startOffset] /
 /// [PageItem.endOffset] to display only the visible portion.
 class PageContentView extends StatelessWidget {
-  const PageContentView({super.key, required this.page});
+  const PageContentView({
+    super.key,
+    required this.page,
+    this.fontScale = 1.0,
+    this.lineHeight = 1.8,
+  });
 
   final PageContent page;
+  final double fontScale;
+  final double lineHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +61,9 @@ class PageContentView extends StatelessWidget {
     if (source is ParagraphContent_Title) {
       return Text(
         source.text,
-        style: theme.textTheme.headlineSmall,
+        style: theme.textTheme.headlineSmall?.copyWith(
+          fontSize: (theme.textTheme.headlineSmall?.fontSize ?? 24) * fontScale,
+        ),
         textAlign: TextAlign.center,
       );
     }
@@ -63,7 +72,10 @@ class PageContentView extends StatelessWidget {
       final text = item.isPartial ? item.visibleText : source.content;
       return Text(
         text,
-        style: theme.textTheme.bodyLarge?.copyWith(height: 1.8),
+        style: theme.textTheme.bodyLarge?.copyWith(
+          fontSize: (theme.textTheme.bodyLarge?.fontSize ?? 16) * fontScale,
+          height: lineHeight,
+        ),
       );
     }
 

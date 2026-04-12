@@ -186,6 +186,67 @@ class AppLocalizationsEn extends AppLocalizations {
   String get readerRetry => 'Retry';
 
   @override
+  String get readerToc => 'TOC';
+
+  @override
+  String get readerInterface => 'Interface';
+
+  @override
+  String get readerSettings => 'Settings';
+
+  @override
+  String get readerRefreshChapter => 'Refresh Chapter';
+
+  @override
+  String get readerBookmarks => 'Bookmarks';
+
+  @override
+  String get readerBookmarkAdded => 'Bookmark added';
+
+  @override
+  String get readerBookmarkRemoved => 'Bookmark removed';
+
+  @override
+  String get readerBookmarkAddHint =>
+      'Tap to add bookmark, long press to add label';
+
+  @override
+  String get readerBookmarkLabelTitle => 'New Bookmark';
+
+  @override
+  String get readerBookmarkLabelHint => 'Optional label';
+
+  @override
+  String get readerNoBookmarks => 'No bookmarks yet';
+
+  @override
+  String get readerSearchTocHint => 'Search chapters';
+
+  @override
+  String get readerSearchBookmarksHint => 'Search bookmarks';
+
+  @override
+  String readerBookmarkParagraph(int index) {
+    return 'Paragraph $index';
+  }
+
+  @override
+  String get readerThemeSystem => 'System';
+
+  @override
+  String get readerThemeLight => 'Light';
+
+  @override
+  String get readerThemeDark => 'Dark';
+
+  @override
+  String get readerThemeSepia => 'Sepia';
+
+  @override
+  String get readerSettingPlaceholder =>
+      'This entry is reserved for future settings.';
+
+  @override
   String get feedsTitle => 'Feeds';
 
   @override

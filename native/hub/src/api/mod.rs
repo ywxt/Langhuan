@@ -5,6 +5,7 @@ pub mod types;
 
 pub mod app_data;
 pub mod auth;
+pub mod bookmark;
 pub mod bookshelf;
 pub mod cleanup;
 pub mod feed_stream;
@@ -16,6 +17,7 @@ pub mod registry;
 // Re-export all public API functions so FRB can find them.
 pub use app_data::*;
 pub use auth::*;
+pub use bookmark::*;
 pub use bookshelf::*;
 pub use feed_stream::*;
 pub use locale::*;

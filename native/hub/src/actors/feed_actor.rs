@@ -1,4 +1,4 @@
-//! [`StreamActor`] — handles feed queries: book info and pull-based streams.
+//! [`FeedActor`] — handles feed queries: book info and pull-based streams.
 //!
 //! The generic [`PullStream<T>`] encapsulates a spawned producer task that
 //! iterates a feed stream and sends items through a bounded channel.  Dart
@@ -16,9 +16,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_stream::StreamExt;
 
-use crate::api::types::{
-    BookInfo, BridgeError, ChapterItem, ParagraphContent, SearchResultItem,
-};
+use crate::api::types::{BookInfo, BridgeError, ChapterItem, ParagraphContent, SearchResultItem};
 
 use super::registry_actor::{GetFeed, RegistryActor};
 
@@ -107,6 +105,7 @@ async fn drive_stream<S, SrcItem, T, F>(
 pub struct GetBookInfo {
     pub feed_id: String,
     pub book_id: String,
+    pub force_refresh: bool,
 }
 
 pub struct OpenSearchStream {
@@ -117,25 +116,27 @@ pub struct OpenSearchStream {
 pub struct OpenChaptersStream {
     pub feed_id: String,
     pub book_id: String,
+    pub force_refresh: bool,
 }
 
 pub struct OpenParagraphsStream {
     pub feed_id: String,
     pub book_id: String,
     pub chapter_id: String,
+    pub force_refresh: bool,
 }
 
 // ---------------------------------------------------------------------------
 // Actor
 // ---------------------------------------------------------------------------
 
-pub struct StreamActor {
+pub struct FeedActor {
     registry_addr: Address<RegistryActor>,
 }
 
-impl Actor for StreamActor {}
+impl Actor for FeedActor {}
 
-impl StreamActor {
+impl FeedActor {
     pub fn new(registry_addr: Address<RegistryActor>) -> Self {
         Self { registry_addr }
     }
@@ -164,12 +165,15 @@ impl StreamActor {
 // ---------------------------------------------------------------------------
 
 #[async_trait]
-impl Handler<GetBookInfo> for StreamActor {
+impl Handler<GetBookInfo> for FeedActor {
     type Result = Result<BookInfo, BridgeError>;
 
     async fn handle(&mut self, msg: GetBookInfo, _: &Context<Self>) -> Self::Result {
-        tracing::debug!(feed_id = %msg.feed_id, book_id = %msg.book_id, "book info");
+        tracing::debug!(feed_id = %msg.feed_id, book_id = %msg.book_id, force_refresh = msg.force_refresh, "book info");
         let feed = self.resolve_feed(&msg.feed_id).await?;
+        if msg.force_refresh {
+            feed.clear_book_info_cache(&msg.book_id).await?;
+        }
         let info = feed
             .book_info(&msg.book_id)
             .await
@@ -185,7 +189,7 @@ impl Handler<GetBookInfo> for StreamActor {
 }
 
 #[async_trait]
-impl Handler<OpenSearchStream> for StreamActor {
+impl Handler<OpenSearchStream> for FeedActor {
     type Result = Result<PullStream<SearchResultItem>, BridgeError>;
 
     async fn handle(&mut self, msg: OpenSearchStream, _: &Context<Self>) -> Self::Result {
@@ -206,12 +210,15 @@ impl Handler<OpenSearchStream> for StreamActor {
 }
 
 #[async_trait]
-impl Handler<OpenChaptersStream> for StreamActor {
+impl Handler<OpenChaptersStream> for FeedActor {
     type Result = Result<PullStream<ChapterItem>, BridgeError>;
 
     async fn handle(&mut self, msg: OpenChaptersStream, _: &Context<Self>) -> Self::Result {
-        tracing::debug!(feed_id = %msg.feed_id, book_id = %msg.book_id, "open chapters stream");
+        tracing::debug!(feed_id = %msg.feed_id, book_id = %msg.book_id, force_refresh = msg.force_refresh, "open chapters stream");
         let feed = self.resolve_feed(&msg.feed_id).await?;
+        if msg.force_refresh {
+            feed.clear_chapters_cache(&msg.book_id).await?;
+        }
         let book_id = msg.book_id;
         Ok(spawn_pull_stream(|tx| async move {
             drive_stream(feed.chapters(&book_id), tx, |item| ChapterItem {
@@ -225,7 +232,7 @@ impl Handler<OpenChaptersStream> for StreamActor {
 }
 
 #[async_trait]
-impl Handler<OpenParagraphsStream> for StreamActor {
+impl Handler<OpenParagraphsStream> for FeedActor {
     type Result = Result<PullStream<ParagraphContent>, BridgeError>;
 
     async fn handle(&mut self, msg: OpenParagraphsStream, _: &Context<Self>) -> Self::Result {
@@ -233,9 +240,14 @@ impl Handler<OpenParagraphsStream> for StreamActor {
             feed_id = %msg.feed_id,
             book_id = %msg.book_id,
             chapter_id = %msg.chapter_id,
+            force_refresh = msg.force_refresh,
             "open paragraphs stream"
         );
         let feed = self.resolve_feed(&msg.feed_id).await?;
+        if msg.force_refresh {
+            feed.clear_chapter_cache(&msg.book_id, &msg.chapter_id)
+                .await?;
+        }
         let book_id = msg.book_id;
         let chapter_id = msg.chapter_id;
         Ok(spawn_pull_stream(|tx| async move {

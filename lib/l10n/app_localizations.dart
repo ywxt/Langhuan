@@ -428,6 +428,120 @@ abstract class AppLocalizations {
   /// **'Retry'**
   String get readerRetry;
 
+  /// Reader bottom bar button: table of contents
+  ///
+  /// In en, this message translates to:
+  /// **'TOC'**
+  String get readerToc;
+
+  /// Reader bottom bar button: interface settings
+  ///
+  /// In en, this message translates to:
+  /// **'Interface'**
+  String get readerInterface;
+
+  /// Reader bottom bar button: settings placeholder
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get readerSettings;
+
+  /// Reader action to refresh current chapter
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh Chapter'**
+  String get readerRefreshChapter;
+
+  /// Reader bookmark list title
+  ///
+  /// In en, this message translates to:
+  /// **'Bookmarks'**
+  String get readerBookmarks;
+
+  /// Snackbar after adding a bookmark
+  ///
+  /// In en, this message translates to:
+  /// **'Bookmark added'**
+  String get readerBookmarkAdded;
+
+  /// Snackbar after removing a bookmark
+  ///
+  /// In en, this message translates to:
+  /// **'Bookmark removed'**
+  String get readerBookmarkRemoved;
+
+  /// Tooltip for bookmark add button
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to add bookmark, long press to add label'**
+  String get readerBookmarkAddHint;
+
+  /// Dialog title for creating a bookmark with optional label
+  ///
+  /// In en, this message translates to:
+  /// **'New Bookmark'**
+  String get readerBookmarkLabelTitle;
+
+  /// Text field hint for bookmark label
+  ///
+  /// In en, this message translates to:
+  /// **'Optional label'**
+  String get readerBookmarkLabelHint;
+
+  /// Bookmark list empty state
+  ///
+  /// In en, this message translates to:
+  /// **'No bookmarks yet'**
+  String get readerNoBookmarks;
+
+  /// Search input hint in TOC bottom sheet
+  ///
+  /// In en, this message translates to:
+  /// **'Search chapters'**
+  String get readerSearchTocHint;
+
+  /// Search input hint in bookmarks bottom sheet
+  ///
+  /// In en, this message translates to:
+  /// **'Search bookmarks'**
+  String get readerSearchBookmarksHint;
+
+  /// Fallback bookmark paragraph name
+  ///
+  /// In en, this message translates to:
+  /// **'Paragraph {index}'**
+  String readerBookmarkParagraph(int index);
+
+  /// Reader theme option: follow system
+  ///
+  /// In en, this message translates to:
+  /// **'System'**
+  String get readerThemeSystem;
+
+  /// Reader theme option: light
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get readerThemeLight;
+
+  /// Reader theme option: dark
+  ///
+  /// In en, this message translates to:
+  /// **'Dark'**
+  String get readerThemeDark;
+
+  /// Reader theme option: sepia
+  ///
+  /// In en, this message translates to:
+  /// **'Sepia'**
+  String get readerThemeSepia;
+
+  /// Placeholder text in reader settings sheet
+  ///
+  /// In en, this message translates to:
+  /// **'This entry is reserved for future settings.'**
+  String get readerSettingPlaceholder;
+
   /// Feeds page title
   ///
   /// In en, this message translates to:

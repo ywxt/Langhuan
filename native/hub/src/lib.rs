@@ -143,6 +143,7 @@ fn localize_storage_kind(kind: langhuan::error::StorageKind) -> String {
         StorageKind::ReadingProgress => t!("error_target.reading_progress").to_string(),
         StorageKind::ChapterCache => t!("error_target.chapter_cache").to_string(),
         StorageKind::Auth => t!("error_target.auth").to_string(),
+        StorageKind::Bookmark => t!("error_target.bookmark").to_string(),
     }
 }
 
@@ -166,6 +167,7 @@ fn localize_format_kind(kind: langhuan::error::FormatKind) -> String {
         FormatKind::ReadingProgress => t!("error_target.reading_progress_file").to_string(),
         FormatKind::ChapterCache => t!("error_target.chapter_cache_file").to_string(),
         FormatKind::Auth => t!("error_target.auth_file").to_string(),
+        FormatKind::Bookmark => t!("error_target.bookmark_file").to_string(),
     }
 }
 

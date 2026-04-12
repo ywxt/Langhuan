@@ -186,6 +186,65 @@ class AppLocalizationsZh extends AppLocalizations {
   String get readerRetry => '重試';
 
   @override
+  String get readerToc => '目錄';
+
+  @override
+  String get readerInterface => '界面';
+
+  @override
+  String get readerSettings => '設置';
+
+  @override
+  String get readerRefreshChapter => '刷新本章';
+
+  @override
+  String get readerBookmarks => '書籤';
+
+  @override
+  String get readerBookmarkAdded => '已添加書籤';
+
+  @override
+  String get readerBookmarkRemoved => '已刪除書籤';
+
+  @override
+  String get readerBookmarkAddHint => '點擊添加書籤，長按可添加標籤';
+
+  @override
+  String get readerBookmarkLabelTitle => '新增書籤';
+
+  @override
+  String get readerBookmarkLabelHint => '可選標籤';
+
+  @override
+  String get readerNoBookmarks => '暫無書籤';
+
+  @override
+  String get readerSearchTocHint => '搜索章節';
+
+  @override
+  String get readerSearchBookmarksHint => '搜索書籤';
+
+  @override
+  String readerBookmarkParagraph(int index) {
+    return '第 $index 段';
+  }
+
+  @override
+  String get readerThemeSystem => '跟隨系統';
+
+  @override
+  String get readerThemeLight => '淺色';
+
+  @override
+  String get readerThemeDark => '深色';
+
+  @override
+  String get readerThemeSepia => '護眼';
+
+  @override
+  String get readerSettingPlaceholder => '此入口預留，後續擴展。';
+
+  @override
   String get feedsTitle => '書源';
 
   @override

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../feeds/feed_service.dart';
+import '../../../src/rust/api/types.dart';
 import 'chapter_loader.dart';
 import 'horizontal_reader_view.dart';
 import 'reader_types.dart';
@@ -26,11 +27,14 @@ class ChapterContentManager extends StatefulWidget {
     required this.initialChapterId,
     required this.initialParagraphIndex,
     this.initialParagraphOffset = 0,
+    this.fontScale = 1.0,
+    this.lineHeight = 1.8,
     required this.readerMode,
     required this.contentPadding,
     required this.onChapterChanged,
     required this.onParagraphChanged,
     required this.onParagraphOffsetChanged,
+    this.onChapterParagraphsReady,
   });
 
   final String feedId;
@@ -39,11 +43,15 @@ class ChapterContentManager extends StatefulWidget {
   final String initialChapterId;
   final int initialParagraphIndex;
   final double initialParagraphOffset;
+  final double fontScale;
+  final double lineHeight;
   final ReaderMode readerMode;
   final EdgeInsets contentPadding;
   final ValueChanged<String> onChapterChanged;
   final ValueChanged<int> onParagraphChanged;
   final ValueChanged<double> onParagraphOffsetChanged;
+  final void Function(String chapterId, List<ParagraphContent> paragraphs)?
+  onChapterParagraphsReady;
 
   @override
   State<ChapterContentManager> createState() => _ChapterContentManagerState();
@@ -58,6 +66,7 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
   late String _currentChapterId;
   int _currentParagraphIndex = 0;
   double _currentParagraphOffset = 0;
+  final Set<String> _reportedParagraphChapters = <String>{};
 
   /// Vertical mode keeps a sliding window of 5 chapters: the current chapter
   /// plus two on each side.  CustomScrollView with center key ensures
@@ -141,6 +150,7 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
     });
     // Dispose old loader and create a fresh one.
     _loader.dispose();
+    _reportedParagraphChapters.clear();
     _loader = ChapterLoader(
       feedId: widget.feedId,
       bookId: widget.bookId,
@@ -148,6 +158,19 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
       maxLoaded: _maxLoaded,
     );
     await _initialize();
+  }
+
+  void _emitReadyParagraphsIfNeeded() {
+    final callback = widget.onChapterParagraphsReady;
+    if (callback == null) return;
+
+    for (final slot in _loader.slots) {
+      final paragraphs = slot.paragraphs;
+      if (paragraphs == null || !slot.isReady) continue;
+      if (_reportedParagraphChapters.contains(slot.chapterId)) continue;
+      _reportedParagraphChapters.add(slot.chapterId);
+      callback(slot.chapterId, paragraphs);
+    }
   }
 
   void _onChapterChanged(String chapterId) {
@@ -167,6 +190,8 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
 
   @override
   Widget build(BuildContext context) {
+    _emitReadyParagraphsIfNeeded();
+
     if (_isInitialLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -204,6 +229,8 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
         initialChapterId: _currentChapterId,
         initialParagraphIndex: _currentParagraphIndex,
         initialParagraphOffset: _currentParagraphOffset,
+        fontScale: widget.fontScale,
+        lineHeight: widget.lineHeight,
         contentPadding: widget.contentPadding,
         onChapterChanged: _onChapterChanged,
         onParagraphChanged: _onParagraphChanged,
@@ -216,6 +243,8 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
       loader: _loader,
       initialChapterId: _currentChapterId,
       initialParagraphIndex: _currentParagraphIndex,
+      fontScale: widget.fontScale,
+      lineHeight: widget.lineHeight,
       contentPadding: widget.contentPadding,
       onChapterChanged: _onChapterChanged,
       onParagraphChanged: _onParagraphChanged,

@@ -25,6 +25,8 @@ class VerticalReaderView extends StatefulWidget {
     required this.initialChapterId,
     required this.initialParagraphIndex,
     this.initialParagraphOffset = 0,
+    this.fontScale = 1.0,
+    this.lineHeight = 1.8,
     required this.contentPadding,
     required this.onChapterChanged,
     required this.onParagraphChanged,
@@ -35,6 +37,8 @@ class VerticalReaderView extends StatefulWidget {
   final String initialChapterId;
   final int initialParagraphIndex;
   final double initialParagraphOffset;
+  final double fontScale;
+  final double lineHeight;
   final EdgeInsets contentPadding;
   final ValueChanged<String> onChapterChanged;
   final ValueChanged<int> onParagraphChanged;
@@ -63,7 +67,7 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
 
   /// The last position we reported upward via _commitPosition.
   ({String chapterId, int paragraphIndex, double paragraphOffset})?
-      _lastReportedPosition;
+  _lastReportedPosition;
 
   // ─ Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -94,8 +98,8 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
 
     final positionChanged =
         oldWidget.initialChapterId != widget.initialChapterId ||
-            oldWidget.initialParagraphIndex != widget.initialParagraphIndex ||
-            oldWidget.initialParagraphOffset != widget.initialParagraphOffset;
+        oldWidget.initialParagraphIndex != widget.initialParagraphIndex ||
+        oldWidget.initialParagraphOffset != widget.initialParagraphOffset;
 
     if (!positionChanged) return;
 
@@ -170,10 +174,8 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
     final pos = _scrollController.position;
     const threshold = 300.0; // px before reaching the edge
 
-    final approachingEnd =
-        pos.maxScrollExtent - pos.pixels < threshold;
-    final approachingStart =
-        pos.pixels - pos.minScrollExtent < threshold;
+    final approachingEnd = pos.maxScrollExtent - pos.pixels < threshold;
+    final approachingStart = pos.pixels - pos.minScrollExtent < threshold;
 
     if (approachingEnd || approachingStart) {
       widget.loader.preloadIfNeeded(
@@ -415,10 +417,7 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
       child: CustomScrollView(
         controller: _scrollController,
         center: _centerSliverKey,
-        slivers: [
-          ...beforeSlivers,
-          ...forwardSlivers,
-        ],
+        slivers: [...beforeSlivers, ...forwardSlivers],
       ),
     );
   }
@@ -465,10 +464,7 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (showSeparator) ...[
-          const Divider(),
-          const SizedBox(height: 8),
-        ],
+        if (showSeparator) ...[const Divider(), const SizedBox(height: 8)],
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 16),
           child: Text(
@@ -483,6 +479,8 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
             child: ParagraphView(
               key: _getOrCreateKey(slot.chapterId, pi),
               item: paragraphs[pi],
+              fontScale: widget.fontScale,
+              lineHeight: widget.lineHeight,
             ),
           ),
       ],

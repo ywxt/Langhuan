@@ -65,6 +65,9 @@ error_target.chapter_cache:
 error_target.auth:
   en: "auth storage"
   zh: "登錄信息存儲"
+error_target.bookmark:
+  en: "bookmark storage"
+  zh: "書籤存儲"
 error_target.bookshelf_file:
   en: "bookshelf file"
   zh: "書架文件"
@@ -77,6 +80,9 @@ error_target.chapter_cache_file:
 error_target.auth_file:
   en: "auth file"
   zh: "登錄信息文件"
+error_target.bookmark_file:
+  en: "bookmark file"
+  zh: "書籤文件"
 error_operation.read:
   en: "read"
   zh: "讀取"

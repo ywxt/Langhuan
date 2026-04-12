@@ -1,4 +1,4 @@
-use crate::actors::stream_actor::{
+use crate::actors::feed_actor::{
     GetBookInfo, OpenChaptersStream, OpenParagraphsStream, OpenSearchStream, PullStream,
 };
 use crate::actors::addresses;
@@ -59,7 +59,7 @@ pub async fn open_search_stream(
     keyword: String,
 ) -> Result<FeedSearchStream, BridgeError> {
     let stream = addresses()?
-        .stream
+        .feed
         .clone()
         .send(OpenSearchStream { feed_id, keyword })
         .await??;
@@ -70,11 +70,12 @@ pub async fn open_search_stream(
 pub async fn open_chapters_stream(
     feed_id: String,
     book_id: String,
+    force_refresh: bool,
 ) -> Result<FeedChaptersStream, BridgeError> {
     let stream = addresses()?
-        .stream
+        .feed
         .clone()
-        .send(OpenChaptersStream { feed_id, book_id })
+        .send(OpenChaptersStream { feed_id, book_id, force_refresh })
         .await??;
     Ok(FeedChaptersStream(stream))
 }
@@ -84,24 +85,26 @@ pub async fn open_paragraphs_stream(
     feed_id: String,
     book_id: String,
     chapter_id: String,
+    force_refresh: bool,
 ) -> Result<FeedParagraphsStream, BridgeError> {
     let stream = addresses()?
-        .stream
+        .feed
         .clone()
         .send(OpenParagraphsStream {
             feed_id,
             book_id,
             chapter_id,
+            force_refresh,
         })
         .await??;
     Ok(FeedParagraphsStream(stream))
 }
 
 /// Fetch book info (single value, not a stream).
-pub async fn book_info(feed_id: String, book_id: String) -> Result<BookInfo, BridgeError> {
+pub async fn book_info(feed_id: String, book_id: String, force_refresh: bool) -> Result<BookInfo, BridgeError> {
     addresses()?
-        .stream
+        .feed
         .clone()
-        .send(GetBookInfo { feed_id, book_id })
+        .send(GetBookInfo { feed_id, book_id, force_refresh })
         .await?
 }

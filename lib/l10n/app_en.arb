@@ -197,6 +197,68 @@
   "readerRetry": "Retry",
   "@readerRetry": { "description": "Retry action label for chapter loading failures" },
 
+  "readerToc": "TOC",
+  "@readerToc": { "description": "Reader bottom bar button: table of contents" },
+
+  "readerInterface": "Interface",
+  "@readerInterface": { "description": "Reader bottom bar button: interface settings" },
+
+  "readerSettings": "Settings",
+  "@readerSettings": { "description": "Reader bottom bar button: settings placeholder" },
+
+  "readerRefreshChapter": "Refresh Chapter",
+  "@readerRefreshChapter": { "description": "Reader action to refresh current chapter" },
+
+  "readerBookmarks": "Bookmarks",
+  "@readerBookmarks": { "description": "Reader bookmark list title" },
+
+  "readerBookmarkAdded": "Bookmark added",
+  "@readerBookmarkAdded": { "description": "Snackbar after adding a bookmark" },
+
+  "readerBookmarkRemoved": "Bookmark removed",
+  "@readerBookmarkRemoved": { "description": "Snackbar after removing a bookmark" },
+
+  "readerBookmarkAddHint": "Tap to add bookmark, long press to add label",
+  "@readerBookmarkAddHint": { "description": "Tooltip for bookmark add button" },
+
+  "readerBookmarkLabelTitle": "New Bookmark",
+  "@readerBookmarkLabelTitle": { "description": "Dialog title for creating a bookmark with optional label" },
+
+  "readerBookmarkLabelHint": "Optional label",
+  "@readerBookmarkLabelHint": { "description": "Text field hint for bookmark label" },
+
+  "readerNoBookmarks": "No bookmarks yet",
+  "@readerNoBookmarks": { "description": "Bookmark list empty state" },
+
+  "readerSearchTocHint": "Search chapters",
+  "@readerSearchTocHint": { "description": "Search input hint in TOC bottom sheet" },
+
+  "readerSearchBookmarksHint": "Search bookmarks",
+  "@readerSearchBookmarksHint": { "description": "Search input hint in bookmarks bottom sheet" },
+
+  "readerBookmarkParagraph": "Paragraph {index}",
+  "@readerBookmarkParagraph": {
+    "description": "Fallback bookmark paragraph name",
+    "placeholders": {
+      "index": { "type": "int" }
+    }
+  },
+
+  "readerThemeSystem": "System",
+  "@readerThemeSystem": { "description": "Reader theme option: follow system" },
+
+  "readerThemeLight": "Light",
+  "@readerThemeLight": { "description": "Reader theme option: light" },
+
+  "readerThemeDark": "Dark",
+  "@readerThemeDark": { "description": "Reader theme option: dark" },
+
+  "readerThemeSepia": "Sepia",
+  "@readerThemeSepia": { "description": "Reader theme option: sepia" },
+
+  "readerSettingPlaceholder": "This entry is reserved for future settings.",
+  "@readerSettingPlaceholder": { "description": "Placeholder text in reader settings sheet" },
+
   "feedsTitle": "Feeds",
   "@feedsTitle": { "description": "Feeds page title" },
 

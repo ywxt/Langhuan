@@ -238,6 +238,20 @@ impl<F: Feed> CachedFeed<F> {
             .await
     }
 
+    /// Clear cached chapters list for a specific book.
+    pub async fn clear_chapters_cache(&self, book_id: &str) -> Result<()> {
+        self.cache_store
+            .clear_chapters(&self.inner.meta().id, book_id)
+            .await
+    }
+
+    /// Clear cached book info for a specific book.
+    pub async fn clear_book_info_cache(&self, book_id: &str) -> Result<()> {
+        self.cache_store
+            .clear_book_info(&self.inner.meta().id, book_id)
+            .await
+    }
+
     /// Clear cached content for a specific book.
     pub async fn clear_book_cache(&self, book_id: &str) -> Result<()> {
         self.cache_store

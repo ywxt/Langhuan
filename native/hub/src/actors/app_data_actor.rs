@@ -7,6 +7,7 @@ use super::bookshelf_actor::BookshelfActor;
 use super::login_actor::LoginActor;
 use super::reading_progress_actor::ReadingProgressActor;
 use super::registry_actor::RegistryActor;
+use super::bookmark_actor::BookmarkActor;
 
 pub struct InitializeAppDataDirectory {
     pub path: String,
@@ -22,6 +23,7 @@ pub struct AppDataActor {
     login_addr: Address<LoginActor>,
     bookshelf_addr: Address<BookshelfActor>,
     reading_progress_addr: Address<ReadingProgressActor>,
+    bookmark_addr: Address<BookmarkActor>,
     app_data_dir: Option<String>,
 }
 
@@ -33,12 +35,14 @@ impl AppDataActor {
         login_addr: Address<LoginActor>,
         bookshelf_addr: Address<BookshelfActor>,
         reading_progress_addr: Address<ReadingProgressActor>,
+        bookmark_addr: Address<BookmarkActor>,
     ) -> Self {
         Self {
             registry_addr,
             login_addr,
             bookshelf_addr,
             reading_progress_addr,
+            bookmark_addr,
             app_data_dir: None,
         }
     }
@@ -67,6 +71,10 @@ impl AppDataActor {
             .await??;
 
         self.reading_progress_addr
+            .send(InitializeAppDataDirectory { path: path.clone() })
+            .await??;
+
+        self.bookmark_addr
             .send(InitializeAppDataDirectory { path: path.clone() })
             .await??;
 
@@ -111,6 +119,7 @@ mod tests {
     use tokio::spawn;
 
     use super::super::bookshelf_actor::BookshelfActor;
+    use super::super::bookmark_actor::BookmarkActor;
     use super::super::login_actor::LoginActor;
     use super::super::reading_progress_actor::ReadingProgressActor;
     use super::super::registry_actor::RegistryActor;
@@ -132,22 +141,27 @@ mod tests {
         let login_addr = login_context.address();
         let reading_progress_context: Context<ReadingProgressActor> = Context::new();
         let reading_progress_addr = reading_progress_context.address();
+        let bookmark_context: Context<BookmarkActor> = Context::new();
+        let bookmark_addr = bookmark_context.address();
 
         let registry_actor = RegistryActor::new(registry_addr.clone(), ScriptEngine::new());
         let login_actor = LoginActor::new(registry_addr.clone());
         let bookshelf_actor = BookshelfActor::new(registry_addr.clone());
         let reading_progress_actor = ReadingProgressActor::new();
+        let bookmark_actor = BookmarkActor::new();
         let app_data_actor = AppDataActor::new(
             registry_addr,
             login_addr,
             bookshelf_addr,
             reading_progress_addr,
+            bookmark_addr,
         );
 
         spawn(registry_context.run(registry_actor));
         spawn(login_context.run(login_actor));
         spawn(bookshelf_context.run(bookshelf_actor));
         spawn(reading_progress_context.run(reading_progress_actor));
+        spawn(bookmark_context.run(bookmark_actor));
 
         let mut actor = app_data_actor;
         let result = actor
@@ -160,6 +174,7 @@ mod tests {
         assert!(dir.path().join("scripts/registry.json").is_file());
         assert!(dir.path().join("bookshelf").is_dir());
         assert!(dir.path().join("progress").is_dir());
+        assert!(dir.path().join("bookmarks").is_dir());
         Ok(())
     }
 
@@ -177,22 +192,27 @@ mod tests {
         let login_addr = login_context.address();
         let reading_progress_context: Context<ReadingProgressActor> = Context::new();
         let reading_progress_addr = reading_progress_context.address();
+        let bookmark_context: Context<BookmarkActor> = Context::new();
+        let bookmark_addr = bookmark_context.address();
 
         let registry_actor = RegistryActor::new(registry_addr.clone(), ScriptEngine::new());
         let login_actor = LoginActor::new(registry_addr.clone());
         let bookshelf_actor = BookshelfActor::new(registry_addr.clone());
         let reading_progress_actor = ReadingProgressActor::new();
+        let bookmark_actor = BookmarkActor::new();
         let app_data_actor = AppDataActor::new(
             registry_addr,
             login_addr,
             bookshelf_addr,
             reading_progress_addr,
+            bookmark_addr,
         );
 
         spawn(registry_context.run(registry_actor));
         spawn(login_context.run(login_actor));
         spawn(bookshelf_context.run(bookshelf_actor));
         spawn(reading_progress_context.run(reading_progress_actor));
+        spawn(bookmark_context.run(bookmark_actor));
 
         let mut actor = app_data_actor;
         let result = actor

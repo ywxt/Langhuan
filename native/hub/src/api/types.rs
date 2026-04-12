@@ -171,3 +171,19 @@ pub struct ReadingProgressItem {
     pub paragraph_index: u32,
     pub updated_at_ms: i64,
 }
+
+// ---------------------------------------------------------------------------
+// Bookmark types
+// ---------------------------------------------------------------------------
+
+pub struct BookmarkItem {
+    pub id: String,
+    pub feed_id: String,
+    pub book_id: String,
+    pub chapter_id: String,
+    pub paragraph_index: u32,
+    pub paragraph_name: String,
+    pub paragraph_preview: String,
+    pub label: String,
+    pub created_at_ms: i64,
+}

@@ -22,10 +22,6 @@ import 'page_content_view.dart';
 // rebuilt and mapped by stable page keys, so the visible page remains
 // stable across child reordering (loading -> content, error -> content).
 // The PageController is created once and never replaced.
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Half of the virtual page range — kept for test compatibility.
-const int kVirtualHalfRange = 500000;
 
 // ── Flat page model ─────────────────────────────────────────────────────
 
@@ -55,6 +51,8 @@ class HorizontalReaderView extends StatefulWidget {
     required this.loader,
     required this.initialChapterId,
     required this.initialParagraphIndex,
+    this.fontScale = 1.0,
+    this.lineHeight = 1.8,
     required this.contentPadding,
     required this.onChapterChanged,
     required this.onParagraphChanged,
@@ -63,6 +61,8 @@ class HorizontalReaderView extends StatefulWidget {
   final ChapterLoader loader;
   final String initialChapterId;
   final int initialParagraphIndex;
+  final double fontScale;
+  final double lineHeight;
   final EdgeInsets contentPadding;
   final ValueChanged<String> onChapterChanged;
   final ValueChanged<int> onParagraphChanged;
@@ -151,6 +151,16 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
       _pendingExternalJump = true;
       if (mounted) setState(() {});
     }
+
+    final layoutStyleChanged =
+        oldWidget.fontScale != widget.fontScale ||
+        oldWidget.lineHeight != widget.lineHeight;
+    if (layoutStyleChanged) {
+      _pageBreaker = null;
+      _pagesCache.clear();
+      _initialJumpDone = false;
+      if (mounted) setState(() {});
+    }
   }
 
   void _onLoaderChanged() {
@@ -175,10 +185,18 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
 
     final theme = Theme.of(context);
     final bodyLarge =
-        theme.textTheme.bodyLarge?.copyWith(height: 1.8) ??
-        const TextStyle(fontSize: 16, height: 1.8);
+      theme.textTheme.bodyLarge?.copyWith(
+        fontSize: (theme.textTheme.bodyLarge?.fontSize ?? 16) *
+          widget.fontScale,
+        height: widget.lineHeight,
+      ) ??
+      TextStyle(fontSize: 16 * widget.fontScale, height: widget.lineHeight);
     final headlineSmall =
-        theme.textTheme.headlineSmall ?? const TextStyle(fontSize: 24);
+      theme.textTheme.headlineSmall?.copyWith(
+        fontSize: (theme.textTheme.headlineSmall?.fontSize ?? 24) *
+          widget.fontScale,
+      ) ??
+      TextStyle(fontSize: 24 * widget.fontScale);
 
     _pageBreaker = PageBreaker(
       pageSize: size,
@@ -721,7 +739,11 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
       case _FlatPageKind.content:
         return Padding(
           padding: widget.contentPadding,
-          child: PageContentView(page: page.page!),
+          child: PageContentView(
+            page: page.page!,
+            fontScale: widget.fontScale,
+            lineHeight: widget.lineHeight,
+          ),
         );
       case _FlatPageKind.loading:
         return _buildLoadingPage(context, title: _chapterTitle(page.chapterId));

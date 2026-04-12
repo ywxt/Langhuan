@@ -3,22 +3,24 @@
 //! Focus on message passing instead.
 
 pub(crate) mod app_data_actor;
+pub(crate) mod bookmark_actor;
 pub(crate) mod bookshelf_actor;
+pub(crate) mod feed_actor;
 pub(crate) mod locale_actor;
 pub(crate) mod login_actor;
 pub(crate) mod reading_progress_actor;
 pub(crate) mod registry_actor;
-pub(crate) mod stream_actor;
 
 pub(crate) use app_data_actor::AppDataActor;
+pub(crate) use bookmark_actor::BookmarkActor;
 pub(crate) use bookshelf_actor::BookshelfActor;
+pub(crate) use feed_actor::FeedActor;
 use langhuan::script::runtime::ScriptEngine;
 pub(crate) use locale_actor::LocaleActor;
 pub(crate) use login_actor::LoginActor;
 use messages::prelude::{Address, Context};
 pub(crate) use reading_progress_actor::ReadingProgressActor;
 pub(crate) use registry_actor::RegistryActor;
-pub(crate) use stream_actor::StreamActor;
 use tokio::spawn;
 use tokio::sync::OnceCell;
 
@@ -32,11 +34,12 @@ static ACTOR_ADDRESSES: OnceCell<ActorAddresses> = OnceCell::const_new();
 pub(crate) struct ActorAddresses {
     pub registry: Address<RegistryActor>,
     pub bookshelf: Address<BookshelfActor>,
-    pub stream: Address<StreamActor>,
+    pub feed: Address<FeedActor>,
     pub login: Address<LoginActor>,
     pub reading_progress: Address<ReadingProgressActor>,
     pub locale: Address<LocaleActor>,
     pub app_data: Address<AppDataActor>,
+    pub bookmark: Address<BookmarkActor>,
 }
 
 /// Returns a reference to the global actor addresses.
@@ -87,6 +90,10 @@ pub async fn create_actors() {
     let reading_progress_context = Context::new();
     let reading_progress_addr = reading_progress_context.address();
 
+    tracing::debug!("creating bookmark actor");
+    let bookmark_context = Context::new();
+    let bookmark_addr = bookmark_context.address();
+
     let registry_actor = RegistryActor::new(registry_addr.clone(), engine);
     let login_actor = LoginActor::new(registry_addr.clone());
     let app_data_actor = AppDataActor::new(
@@ -94,20 +101,23 @@ pub async fn create_actors() {
         login_addr.clone(),
         bookshelf_addr.clone(),
         reading_progress_addr.clone(),
+        bookmark_addr.clone(),
     );
     let reading_progress_actor = ReadingProgressActor::new();
+    let bookmark_actor = BookmarkActor::new();
     spawn(registry_context.run(registry_actor));
     spawn(login_context.run(login_actor));
     spawn(app_data_context.run(app_data_actor));
     spawn(reading_progress_context.run(reading_progress_actor));
+    spawn(bookmark_context.run(bookmark_actor));
 
-    // StreamActor — handles feed content streaming, resolves feeds via
+    // FeedActor — handles feed content streaming, resolves feeds via
     // Handler<GetFeed> on the RegistryActor.
-    tracing::debug!("creating stream actor");
-    let stream_context = Context::new();
-    let stream_addr = stream_context.address();
-    let stream_actor = StreamActor::new(registry_addr.clone());
-    spawn(stream_context.run(stream_actor));
+    tracing::debug!("creating feed actor");
+    let feed_context = Context::new();
+    let feed_addr = feed_context.address();
+    let feed_actor = FeedActor::new(registry_addr.clone());
+    spawn(feed_context.run(feed_actor));
 
     let bookshelf_actor = BookshelfActor::new(registry_addr.clone());
     spawn(bookshelf_context.run(bookshelf_actor));
@@ -116,11 +126,12 @@ pub async fn create_actors() {
         .set(ActorAddresses {
             registry: registry_addr,
             bookshelf: bookshelf_addr,
-            stream: stream_addr,
+            feed: feed_addr,
             login: login_addr,
             reading_progress: reading_progress_addr,
             locale: locale_addr,
             app_data: app_data_addr,
+            bookmark: bookmark_addr,
         })
         .is_err()
     {

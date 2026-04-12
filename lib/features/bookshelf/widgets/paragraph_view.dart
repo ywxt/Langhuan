@@ -9,9 +9,16 @@ import '../../../src/rust/api/types.dart';
 /// horizontal-paging reader (inside a [PageView]).  Callers are responsible
 /// for adding any surrounding padding or scroll view.
 class ParagraphView extends StatelessWidget {
-  const ParagraphView({super.key, required this.item});
+  const ParagraphView({
+    super.key,
+    required this.item,
+    this.fontScale = 1.0,
+    this.lineHeight = 1.8,
+  });
 
   final ParagraphContent item;
+  final double fontScale;
+  final double lineHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +27,9 @@ class ParagraphView extends StatelessWidget {
     if (item is ParagraphContent_Title) {
       return Text(
         (item as ParagraphContent_Title).text,
-        style: theme.textTheme.headlineSmall,
+        style: theme.textTheme.headlineSmall?.copyWith(
+          fontSize: (theme.textTheme.headlineSmall?.fontSize ?? 24) * fontScale,
+        ),
         textAlign: TextAlign.center,
       );
     }
@@ -28,7 +37,10 @@ class ParagraphView extends StatelessWidget {
     if (item is ParagraphContent_Text) {
       return Text(
         (item as ParagraphContent_Text).content,
-        style: theme.textTheme.bodyLarge?.copyWith(height: 1.8),
+        style: theme.textTheme.bodyLarge?.copyWith(
+          fontSize: (theme.textTheme.bodyLarge?.fontSize ?? 16) * fontScale,
+          height: lineHeight,
+        ),
       );
     }
 

@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod bookmark;
 pub mod bookshelf;
 pub mod cache;
 pub mod error;

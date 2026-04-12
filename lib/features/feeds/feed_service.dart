@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../src/rust/api/auth.dart' as rust_auth;
+import '../../src/rust/api/bookmark.dart' as rust_bookmark;
 import '../../src/rust/api/bookshelf.dart' as rust_bookshelf;
 import '../../src/rust/api/feed_stream.dart' as rust_stream;
 import '../../src/rust/api/reading_progress.dart' as rust_progress;
@@ -163,6 +164,43 @@ class ReadingProgressModel {
       );
 }
 
+@immutable
+class BookmarkModel {
+  const BookmarkModel({
+    required this.id,
+    required this.feedId,
+    required this.bookId,
+    required this.chapterId,
+    required this.paragraphIndex,
+    required this.paragraphName,
+    required this.paragraphPreview,
+    required this.label,
+    required this.createdAtMs,
+  });
+
+  final String id;
+  final String feedId;
+  final String bookId;
+  final String chapterId;
+  final int paragraphIndex;
+  final String paragraphName;
+  final String paragraphPreview;
+  final String label;
+  final int createdAtMs;
+
+  factory BookmarkModel.fromRust(BookmarkItem item) => BookmarkModel(
+    id: item.id,
+    feedId: item.feedId,
+    bookId: item.bookId,
+    chapterId: item.chapterId,
+    paragraphIndex: item.paragraphIndex,
+    paragraphName: item.paragraphName,
+    paragraphPreview: item.paragraphPreview,
+    label: item.label,
+    createdAtMs: item.createdAtMs,
+  );
+}
+
 enum FeedAuthStatusModel { loggedIn, loggedOut, expired, unsupported }
 
 @immutable
@@ -242,10 +280,12 @@ class FeedService {
   Stream<ChapterInfoModel> chapters({
     required String feedId,
     required String bookId,
+    bool forceRefresh = false,
   }) async* {
     final stream = await rust_stream.openChaptersStream(
       feedId: feedId,
       bookId: bookId,
+      forceRefresh: forceRefresh,
     );
     try {
       while (true) {
@@ -265,8 +305,13 @@ class FeedService {
   Future<BookInfoModel> bookInfo({
     required String feedId,
     required String bookId,
+    bool forceRefresh = false,
   }) async {
-    final info = await rust_stream.bookInfo(feedId: feedId, bookId: bookId);
+    final info = await rust_stream.bookInfo(
+      feedId: feedId,
+      bookId: bookId,
+      forceRefresh: forceRefresh,
+    );
     return BookInfoModel.fromRust(info);
   }
 
@@ -278,11 +323,13 @@ class FeedService {
     required String feedId,
     required String bookId,
     required String chapterId,
+    bool forceRefresh = false,
   }) async* {
     final stream = await rust_stream.openParagraphsStream(
       feedId: feedId,
       bookId: bookId,
       chapterId: chapterId,
+      forceRefresh: forceRefresh,
     );
     try {
       while (true) {
@@ -376,6 +423,48 @@ class FeedService {
       paragraphIndex: paragraphIndex,
       updatedAtMs: updatedAtMs,
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Bookmarks
+  // -------------------------------------------------------------------------
+
+  Future<List<BookmarkModel>> listBookmarks({
+    required String feedId,
+    required String bookId,
+  }) async {
+    final items = await rust_bookmark.listBookmarks(
+      feedId: feedId,
+      bookId: bookId,
+    );
+    final result = items.map(BookmarkModel.fromRust).toList(growable: false);
+    result.sort((a, b) => b.createdAtMs.compareTo(a.createdAtMs));
+    return result;
+  }
+
+  Future<BookmarkModel> addBookmark({
+    required String feedId,
+    required String bookId,
+    required String chapterId,
+    required int paragraphIndex,
+    required String paragraphName,
+    required String paragraphPreview,
+    String label = '',
+  }) async {
+    final item = await rust_bookmark.addBookmark(
+      feedId: feedId,
+      bookId: bookId,
+      chapterId: chapterId,
+      paragraphIndex: paragraphIndex,
+      paragraphName: paragraphName,
+      paragraphPreview: paragraphPreview,
+      label: label,
+    );
+    return BookmarkModel.fromRust(item);
+  }
+
+  Future<bool> removeBookmark({required String id}) {
+    return rust_bookmark.removeBookmark(id: id);
   }
 
   // -------------------------------------------------------------------------

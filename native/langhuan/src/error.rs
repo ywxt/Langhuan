@@ -10,6 +10,7 @@ pub enum StorageKind {
     ReadingProgress,
     ChapterCache,
     Auth,
+    Bookmark,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,6 +28,7 @@ pub enum FormatKind {
     ReadingProgress,
     ChapterCache,
     Auth,
+    Bookmark,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
