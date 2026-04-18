@@ -92,10 +92,12 @@ impl ParagraphTransform for OpenCcTransform {
         }
 
         out.push(match paragraph {
-            Paragraph::Title { text } => Paragraph::Title {
+            Paragraph::Title { id, text } => Paragraph::Title {
+                id,
                 text: self.convert(&text),
             },
-            Paragraph::Text { content } => Paragraph::Text {
+            Paragraph::Text { id, content } => Paragraph::Text {
+                id,
                 content: self.convert(&content),
             },
             img @ Paragraph::Image { .. } => img,

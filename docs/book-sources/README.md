@@ -298,11 +298,12 @@ Parse the HTTP response into a chapter list.
 
 Returns: [`Page`](#page) of `ChapterInfo`:
 
-| Field   | Type      | Required | Description                             |
-| ------- | --------- | -------- | --------------------------------------- |
-| `id`    | `string`  | Yes      | Chapter identifier                      |
-| `title` | `string`  | Yes      | Chapter title                           |
-| `index` | `integer` | Yes      | Zero-based position in the chapter list |
+| Field   | Type     | Required | Description        |
+| ------- | -------- | -------- | ------------------ |
+| `id`    | `string` | Yes      | Chapter identifier |
+| `title` | `string` | Yes      | Chapter title      |
+
+Chapters are ordered by their position in the returned list (stream order).
 
 ### `paragraphs.request(book_id, chapter_id, cursor)`
 
@@ -324,13 +325,13 @@ Parse the HTTP response into chapter paragraphs.
 | --------- | ------------------------------- | ----------------- |
 | `resp`    | [`HttpResponse`](#httpresponse) | The HTTP response |
 
-Returns: [`Page`](#page) of `Paragraph`. Each paragraph is a tagged table with a `type` discriminator:
+Returns: [`Page`](#page) of `Paragraph`. Each paragraph is a tagged table with a `type` discriminator and a unique `id`:
 
-| Variant                                           | Fields                                                 | Description           |
-| ------------------------------------------------- | ------------------------------------------------------ | --------------------- |
-| `{ type = "title", text = string }`               | `text`: `string` (required)                            | Section/chapter title |
-| `{ type = "text", content = string }`             | `content`: `string` (required)                         | Text paragraph        |
-| `{ type = "image", url = string, alt = string? }` | `url`: `string` (required), `alt`: `string` (optional) | Inline image          |
+| Variant                                                        | Fields                                                                          | Description           |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------- | --------------------- |
+| `{ type = "title", id = string, text = string }`               | `id`: `string` (required), `text`: `string` (required)                         | Section/chapter title |
+| `{ type = "text", id = string, content = string }`             | `id`: `string` (required), `content`: `string` (required)                      | Text paragraph        |
+| `{ type = "image", id = string, url = string, alt = string? }` | `id`: `string` (required), `url`: `string` (required), `alt`: `string` (optional) | Inline image          |
 
 ## Optional: Login Support
 

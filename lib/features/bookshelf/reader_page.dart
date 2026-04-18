@@ -27,13 +27,13 @@ class ReaderPage extends ConsumerStatefulWidget {
     required this.feedId,
     required this.bookId,
     required this.chapterId,
-    this.paragraphIndex = 0,
+    this.paragraphId = '',
   });
 
   final String feedId;
   final String bookId;
   final String chapterId;
-  final int paragraphIndex;
+  final String paragraphId;
 
   @override
   ConsumerState<ReaderPage> createState() => _ReaderPageState();
@@ -48,7 +48,6 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   late final ReadingProgressNotifier _progressNotifier;
   late final ReaderController _readerController;
 
-  // Paragraph selection for long-press toolbar
   ParagraphSelection? _selection;
 
   @override
@@ -84,15 +83,15 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
           .toList();
 
       final fallbackChapterId = _resolveInitialChapterId(chapters);
-      final fallbackParagraphIndex = fallbackChapterId == widget.chapterId
-          ? widget.paragraphIndex
-          : 0;
+      final fallbackParagraphId = fallbackChapterId == widget.chapterId
+          ? widget.paragraphId
+          : '';
 
       await _progressNotifier.load(
         feedId: widget.feedId,
         bookId: widget.bookId,
         fallbackChapterId: fallbackChapterId,
-        fallbackParagraphIndex: fallbackParagraphIndex,
+        fallbackParagraphId: fallbackParagraphId,
       );
 
       if (!mounted) return;
@@ -107,21 +106,19 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
         _isInitializing = false;
       });
 
-      // If the page was opened with a specific chapterId (e.g. from book detail),
-      // use that instead of the saved reading progress.
       final String startChapterId;
-      final int startParagraph;
+      final String startParagraphId;
       if (widget.chapterId.isNotEmpty &&
           chapters.any((c) => c.id == widget.chapterId)) {
         startChapterId = widget.chapterId;
-        startParagraph = widget.paragraphIndex;
+        startParagraphId = widget.paragraphId;
       } else {
         startChapterId = ref.read(readingProgressProvider).activeChapterId;
-        startParagraph = ref.read(readingProgressProvider).activeParagraphIndex;
+        startParagraphId = ref.read(readingProgressProvider).activeParagraphId;
       }
       _readerController.jumpTo(
         chapterId: startChapterId,
-        paragraphIndex: startParagraph,
+        paragraphId: startParagraphId,
       );
 
       unawaited(
@@ -174,12 +171,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     });
   }
 
-  void _jumpToChapter(String chapterId, {int paragraphIndex = 0}) {
-    _readerController.jumpTo(chapterId: chapterId, paragraphIndex: paragraphIndex);
+  void _jumpToChapter(String chapterId, {String paragraphId = ''}) {
+    _readerController.jumpTo(chapterId: chapterId, paragraphId: paragraphId);
   }
 
   void _onPositionChanged(ReaderPosition pos) {
-    _progressNotifier.setActiveChapter(pos.chapterId, paragraphIndex: pos.paragraphIndex);
+    _progressNotifier.setActiveChapter(pos.chapterId, paragraphId: pos.paragraphId);
     _progressNotifier.setActiveOffset(pos.offset);
     unawaited(_progressNotifier.saveActive());
   }
@@ -221,7 +218,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
   Future<void> _addBookmark({
     required String chapterId,
-    required int paragraphIndex,
+    required String paragraphId,
     required ParagraphContent paragraph,
   }) async {
     if (chapterId.isEmpty) return;
@@ -232,7 +229,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
           feedId: widget.feedId,
           bookId: widget.bookId,
           chapterId: chapterId,
-          paragraphIndex: paragraphIndex,
+          paragraphId: paragraphId,
           paragraphName: preview,
           paragraphPreview: preview,
         );
@@ -242,14 +239,14 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
   void _onParagraphLongPress(
     String chapterId,
-    int paragraphIndex,
+    String paragraphId,
     ParagraphContent paragraph,
     Rect globalRect,
   ) {
     setState(() {
       _selection = ParagraphSelection(
         chapterId: chapterId,
-        paragraphIndex: paragraphIndex,
+        paragraphId: paragraphId,
         paragraph: paragraph,
         rect: globalRect,
       );
@@ -283,7 +280,6 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
           }
 
           return ListView.builder(
-            shrinkWrap: true,
             itemCount: bookmarks.length,
             itemBuilder: (context, index) {
               final item = bookmarks[index];
@@ -297,14 +293,14 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                 title: Text(chapterTitle),
                 subtitle: Text(
                   item.paragraphName.trim().isEmpty
-                      ? l10n.readerBookmarkParagraph(item.paragraphIndex + 1)
+                      ? item.paragraphId
                       : item.paragraphName,
                 ),
                 onTap: () {
                   Navigator.of(context).pop();
                   _jumpToChapter(
                     item.chapterId,
-                    paragraphIndex: item.paragraphIndex,
+                    paragraphId: item.paragraphId,
                   );
                 },
                 trailing: IconButton(
@@ -341,6 +337,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
           return ListView.builder(
             controller: scrollController,
             itemCount: _chapters.length,
+            itemExtent: 56.0,
             itemBuilder: (context, index) {
               final chapter = _chapters[index];
               final isActive = chapter.id == currentActiveId;
@@ -536,7 +533,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                   onTap: () {
                     _addBookmark(
                       chapterId: sel.chapterId,
-                      paragraphIndex: sel.paragraphIndex,
+                      paragraphId: sel.paragraphId,
                       paragraph: sel.paragraph,
                     );
                     _clearSelection();
@@ -572,11 +569,90 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     );
   }
 
+  Widget _buildTopBarOverlay({
+    required ThemeData readerTheme,
+    required double topPadding,
+    required String chapterTitle,
+    required String activeChapterId,
+    required AppLocalizations l10n,
+  }) {
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        ignoring: !_showControls,
+        child: AnimatedSlide(
+          duration: const Duration(milliseconds: 180),
+          offset: _showControls ? Offset.zero : const Offset(0, -1),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 180),
+            opacity: _showControls ? 1 : 0,
+            child: ReaderTopBar(
+              topPadding: topPadding,
+              chapterTitle: chapterTitle,
+              backgroundColor: readerTheme.colorScheme.surfaceContainer,
+              titleTextStyle: readerTheme.textTheme.titleMedium,
+              bookmarksTooltip: l10n.readerBookmarks,
+              refreshTooltip: l10n.readerRefreshChapter,
+              isRefreshing: _isRefreshingChapter,
+              onBack: () => Navigator.of(context).pop(),
+              onOpenBookmarks: _openBookmarkSheet,
+              onRefresh: () => _refreshCurrentChapter(activeChapterId),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomBarOverlay({
+    required ThemeData readerTheme,
+    required int currentIdx,
+  }) {
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: IgnorePointer(
+        ignoring: !_showControls,
+        child: AnimatedSlide(
+          duration: const Duration(milliseconds: 180),
+          offset: _showControls ? Offset.zero : const Offset(0, 1),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 180),
+            opacity: _showControls ? 1 : 0,
+            child: ReaderBottomBar(
+              chapters: _chapters,
+              currentIndex: currentIdx,
+              isSwitchingChapter: _isRefreshingChapter,
+              onPrevious: () {
+                if (currentIdx > 0) {
+                  _jumpToChapter(_chapters[currentIdx - 1].id);
+                }
+              },
+              onNext: () {
+                if (currentIdx < _chapters.length - 1) {
+                  _jumpToChapter(_chapters[currentIdx + 1].id);
+                }
+              },
+              onOpenToc: _openTocSheet,
+              onOpenInterface: _openInterfaceSheet,
+              onOpenSettings: _openSettingsSheet,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final settings = ref.watch(readerSettingsProvider);
-    final reading = ref.watch(readingProgressProvider);
+    final activeChapterId = ref.watch(
+      readingProgressProvider.select((s) => s.activeChapterId),
+    );
     final baseTheme = Theme.of(context);
     final readerTheme = resolveReaderTheme(baseTheme, settings.themeMode);
 
@@ -619,12 +695,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
       );
     }
 
-    final activeChapterId = reading.activeChapterId.isEmpty
+    final effectiveChapterId = activeChapterId.isEmpty
         ? _chapters.first.id
-        : reading.activeChapterId;
+        : activeChapterId;
 
     final currentIdx = _chapters
-        .indexWhere((c) => c.id == activeChapterId)
+        .indexWhere((c) => c.id == effectiveChapterId)
         .clamp(0, _chapters.length - 1);
     final chapterTitle = _chapters[currentIdx].title;
 
@@ -648,7 +724,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
             child: Stack(
               children: [
                 Positioned.fill(
-                  child: ChapterContentManager(
+                  child: RepaintBoundary(
+                    child: ChapterContentManager(
                     feedId: widget.feedId,
                     bookId: widget.bookId,
                     chapters: _chapters,
@@ -665,74 +742,22 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                     ),
                     onParagraphLongPress: _onParagraphLongPress,
                     selectedChapterId: _selection?.chapterId,
-                    selectedParagraphIndex: _selection?.paragraphIndex,
+                    selectedParagraphId: _selection?.paragraphId,
+                  ),
                   ),
                 ),
                 if (_selection != null)
                   _buildSelectionToolbar(readerTheme),
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: IgnorePointer(
-                    ignoring: !_showControls,
-                    child: AnimatedSlide(
-                      duration: const Duration(milliseconds: 180),
-                      offset: _showControls ? Offset.zero : const Offset(0, -1),
-                      child: AnimatedOpacity(
-                        duration: const Duration(milliseconds: 180),
-                        opacity: _showControls ? 1 : 0,
-                        child: ReaderTopBar(
-                          topPadding: topPadding,
-                          chapterTitle: chapterTitle,
-                          backgroundColor:
-                              readerTheme.colorScheme.surfaceContainer,
-                          titleTextStyle: readerTheme.textTheme.titleMedium,
-                          bookmarksTooltip: l10n.readerBookmarks,
-                          refreshTooltip: l10n.readerRefreshChapter,
-                          isRefreshing: _isRefreshingChapter,
-                          onBack: () => Navigator.of(context).pop(),
-                          onOpenBookmarks: _openBookmarkSheet,
-                          onRefresh: () =>
-                              _refreshCurrentChapter(activeChapterId),
-                        ),
-                      ),
-                    ),
-                  ),
+                _buildTopBarOverlay(
+                  readerTheme: readerTheme,
+                  topPadding: topPadding,
+                  chapterTitle: chapterTitle,
+                  activeChapterId: effectiveChapterId,
+                  l10n: l10n,
                 ),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: IgnorePointer(
-                    ignoring: !_showControls,
-                    child: AnimatedSlide(
-                      duration: const Duration(milliseconds: 180),
-                      offset: _showControls ? Offset.zero : const Offset(0, 1),
-                      child: AnimatedOpacity(
-                        duration: const Duration(milliseconds: 180),
-                        opacity: _showControls ? 1 : 0,
-                        child: ReaderBottomBar(
-                          chapters: _chapters,
-                          currentIndex: currentIdx,
-                          isSwitchingChapter: _isRefreshingChapter,
-                          onPrevious: () {
-                            if (currentIdx > 0) {
-                              _jumpToChapter(_chapters[currentIdx - 1].id);
-                            }
-                          },
-                          onNext: () {
-                            if (currentIdx < _chapters.length - 1) {
-                              _jumpToChapter(_chapters[currentIdx + 1].id);
-                            }
-                          },
-                          onOpenToc: _openTocSheet,
-                          onOpenInterface: _openInterfaceSheet,
-                          onOpenSettings: _openSettingsSheet,
-                        ),
-                      ),
-                    ),
-                  ),
+                _buildBottomBarOverlay(
+                  readerTheme: readerTheme,
+                  currentIdx: currentIdx,
                 ),
               ],
             ),

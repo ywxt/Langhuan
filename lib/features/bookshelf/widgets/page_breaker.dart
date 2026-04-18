@@ -12,12 +12,14 @@ class PageItem {
   const PageItem({
     required this.source,
     required this.paragraphIndex,
+    required this.paragraphId,
     this.startOffset,
     this.endOffset,
   });
 
   final ParagraphContent source;
   final int paragraphIndex;
+  final String paragraphId;
   final int? startOffset;
   final int? endOffset;
 
@@ -38,6 +40,7 @@ class PageContent {
   final List<PageItem> items;
 
   int get firstParagraphIndex => items.isEmpty ? 0 : items.first.paragraphIndex;
+  String get firstParagraphId => items.isEmpty ? '' : items.first.paragraphId;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,7 +75,7 @@ class PageBreaker {
         PageContent(
           items: [
             for (int i = 0; i < items.length; i++)
-              PageItem(source: items[i], paragraphIndex: i),
+              PageItem(source: items[i], paragraphIndex: i, paragraphId: items[i].id),
           ],
         ),
       ];
@@ -95,7 +98,7 @@ class PageBreaker {
         }
         final sp = cur.isEmpty ? 0.0 : paragraphSpacing;
         remaining -= sp + th;
-        cur.add(PageItem(source: item, paragraphIndex: i));
+        cur.add(PageItem(source: item, paragraphIndex: i, paragraphId: item.id));
       } else if (item is ParagraphContent_Image) {
         if (remaining - spacing < imageHeight && cur.isNotEmpty) {
           pages.add(PageContent(items: cur));
@@ -104,11 +107,12 @@ class PageBreaker {
         }
         final sp = cur.isEmpty ? 0.0 : paragraphSpacing;
         remaining -= sp + imageHeight;
-        cur.add(PageItem(source: item, paragraphIndex: i));
+        cur.add(PageItem(source: item, paragraphIndex: i, paragraphId: item.id));
       } else if (item is ParagraphContent_Text) {
         _layoutText(
           text: item.content,
           paragraphIndex: i,
+          paragraphId: item.id,
           source: item,
           width: w,
           pageHeight: h,
@@ -133,7 +137,7 @@ class PageBreaker {
             PageContent(
               items: [
                 for (int i = 0; i < items.length; i++)
-                  PageItem(source: items[i], paragraphIndex: i),
+                  PageItem(source: items[i], paragraphIndex: i, paragraphId: items[i].id),
               ],
             ),
           ]
@@ -154,6 +158,7 @@ class PageBreaker {
   void _layoutText({
     required String text,
     required int paragraphIndex,
+    required String paragraphId,
     required ParagraphContent_Text source,
     required double width,
     required double pageHeight,
@@ -183,6 +188,7 @@ class PageBreaker {
         currentItems.add(PageItem(
           source: source,
           paragraphIndex: paragraphIndex,
+          paragraphId: paragraphId,
           startOffset: charStart == 0 ? null : charStart,
         ));
         onUpdate(currentItems, remaining);
@@ -220,6 +226,7 @@ class PageBreaker {
           currentItems.add(PageItem(
             source: source,
             paragraphIndex: paragraphIndex,
+            paragraphId: paragraphId,
             startOffset: charStart == 0 ? null : charStart,
           ));
           tp.dispose();
@@ -244,6 +251,7 @@ class PageBreaker {
       currentItems.add(PageItem(
         source: source,
         paragraphIndex: paragraphIndex,
+        paragraphId: paragraphId,
         startOffset: charStart == 0 ? null : charStart,
         endOffset: splitChar,
       ));
@@ -257,10 +265,10 @@ class PageBreaker {
     onUpdate(currentItems, remaining);
   }
 
-  static int pageForParagraph(List<PageContent> pages, int paragraphIndex) {
+  static int pageForParagraph(List<PageContent> pages, String paragraphId) {
     for (int i = 0; i < pages.length; i++) {
       for (final item in pages[i].items) {
-        if (item.paragraphIndex == paragraphIndex) return i;
+        if (item.paragraphId == paragraphId) return i;
       }
     }
     return (pages.length - 1).clamp(0, pages.length);

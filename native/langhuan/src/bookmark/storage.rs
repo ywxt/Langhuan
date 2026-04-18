@@ -115,7 +115,7 @@ mod tests {
             feed_id: feed_id.to_string(),
             book_id: book_id.to_string(),
             chapter_id: chapter_id.to_string(),
-            paragraph_index: 5,
+            paragraph_id: "p-5".to_string(),
             paragraph_name: "Paragraph 6".to_string(),
             paragraph_preview: "preview text".to_string(),
             label: "test".to_string(),

@@ -92,19 +92,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                                   state.uri.queryParameters['bookId'] ?? '';
                               final chapterId =
                                   state.uri.queryParameters['chapterId'] ?? '';
-                              final paragraphIndex =
-                                  int.tryParse(
-                                    state
-                                            .uri
-                                            .queryParameters['paragraphIndex'] ??
-                                        '',
-                                  ) ??
-                                  0;
+                              final paragraphId =
+                                  state
+                                          .uri
+                                          .queryParameters['paragraphId'] ??
+                                      '';
                               return ReaderPage(
                                 feedId: feedId,
                                 bookId: bookId,
                                 chapterId: chapterId,
-                                paragraphIndex: paragraphIndex,
+                                paragraphId: paragraphId,
                               );
                             },
                           ),

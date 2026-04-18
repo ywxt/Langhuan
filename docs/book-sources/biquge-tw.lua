@@ -373,7 +373,6 @@ local function parse_chapter_items(resp)
                     table.insert(items, {
                         id = to_chapter_composite_id(b_id, ch_id),
                         title = clean_title,
-                        index = index,
                     })
                     index = index + 1
                     seen[ch_id] = true
@@ -383,6 +382,10 @@ local function parse_chapter_items(resp)
     end
 
     return items
+end
+
+local function generate_id()
+    return string.format("%08x%08x", math.random(0, 0x7FFFFFFF), math.random(0, 0x7FFFFFFF))
 end
 
 local function parse_paragraph_items(resp)
@@ -403,6 +406,7 @@ local function parse_paragraph_items(resp)
     if title ~= "" then
         table.insert(items, {
             type = "title",
+            id = generate_id(),
             text = title,
         })
     end
@@ -434,6 +438,7 @@ local function parse_paragraph_items(resp)
                 then
                     table.insert(items, {
                         type = "text",
+                        id = generate_id(),
                         content = text,
                     })
                 end
@@ -454,6 +459,7 @@ local function parse_paragraph_items(resp)
                 if text ~= "" then
                     table.insert(items, {
                         type = "text",
+                        id = generate_id(),
                         content = text,
                     })
                 end
@@ -472,6 +478,7 @@ local function parse_paragraph_items(resp)
                     if text ~= "" then
                         table.insert(items, {
                             type = "text",
+                            id = generate_id(),
                             content = text,
                         })
                     end

@@ -28,6 +28,8 @@ class SearchPage extends ConsumerStatefulWidget {
 class _SearchPageState extends ConsumerState<SearchPage> {
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
+  Future<bool>? _authSupportedFuture;
+  String? _authSupportedFeedId;
 
   List<FeedMetaItem> _visibleFeeds(FeedListState feedState) {
     return feedState.items
@@ -204,8 +206,14 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         );
       }
 
+      if (_authSupportedFeedId != selectedFeed.id) {
+        _authSupportedFeedId = selectedFeed.id;
+        _authSupportedFuture =
+            FeedService.instance.isFeedAuthSupported(selectedFeed.id);
+      }
+
       return FutureBuilder<bool>(
-        future: FeedService.instance.isFeedAuthSupported(selectedFeed.id),
+        future: _authSupportedFuture,
         builder: (context, snapshot) {
           final supportsAuth = snapshot.data ?? false;
 

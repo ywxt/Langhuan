@@ -36,12 +36,12 @@ class VerticalReaderView extends StatefulWidget {
     required this.contentPadding,
     required this.onPositionUpdate,
     required this.onRetry,
-    this.initialParagraphIndex = 0,
+    this.initialParagraphId = '',
     this.initialOffset = 0,
     this.onJumpRegistered,
     this.onParagraphLongPress,
     this.selectedChapterId,
-    this.selectedParagraphIndex,
+    this.selectedParagraphId,
   });
 
   final ChapterStore store;
@@ -49,20 +49,20 @@ class VerticalReaderView extends StatefulWidget {
   final double fontScale;
   final double lineHeight;
   final EdgeInsets contentPadding;
-  final void Function(String chapterId, int paragraphIndex, double offset)
+  final void Function(String chapterId, String paragraphId, double offset)
       onPositionUpdate;
   final void Function(String chapterId) onRetry;
-  final int initialParagraphIndex;
+  final String initialParagraphId;
   final double initialOffset;
-  final ValueChanged<void Function(int, double)>? onJumpRegistered;
+  final ValueChanged<void Function(String, double)>? onJumpRegistered;
   final void Function(
     String chapterId,
-    int paragraphIndex,
+    String paragraphId,
     ParagraphContent paragraph,
     Rect globalRect,
   )? onParagraphLongPress;
   final String? selectedChapterId;
-  final int? selectedParagraphIndex;
+  final String? selectedParagraphId;
 
   @override
   State<VerticalReaderView> createState() => _VerticalReaderViewState();
@@ -74,32 +74,18 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
   final GlobalKey _scrollViewKey = GlobalKey();
 
   bool _jumpInProgress = false;
-  int _scrollTargetParagraph = -1;
+  String _scrollTargetParagraphId = '';
   final GlobalKey _jumpTargetKey = GlobalKey();
   int _ensureRetries = 0;
   static const _maxEnsureRetries = 10;
 
   static const _chapterGap = 48.0;
 
-  // ─ Chapter boundary keys for position tracking ──────────────────────
-  //
-  // One GlobalKey per chapter (keyed by seq), assigned to the first
-  // paragraph of each chapter.  Used by _reportPosition to find
-  // which chapter is actually visible in the viewport, replacing
-  // the old estimation-based approach.
-
   final Map<int, GlobalKey> _chapterKeys = {};
 
   GlobalKey _chapterKey(int seq) {
     return _chapterKeys.putIfAbsent(seq, () => GlobalKey());
   }
-
-  // ─ Precomputed forward/reverse item lists ────────────────────────────
-  //
-  // Rather than resolving indices on-the-fly inside itemBuilder (which
-  // triggers side-effects during build and causes stutter on rebuild),
-  // we precompute the full list of items whenever data changes.
-  // The SliverList.builder simply indexes into these lists.
 
   List<_ResolvedItem> _forwardItems = [];
   List<_ResolvedItem> _reverseItems = [];
@@ -139,8 +125,8 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
   }
 
   void _scheduleInitialScroll() {
-    if (widget.initialParagraphIndex > 0) {
-      _scrollTargetParagraph = widget.initialParagraphIndex;
+    if (widget.initialParagraphId.isNotEmpty) {
+      _scrollTargetParagraphId = widget.initialParagraphId;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _ensureTargetVisible();
       });
@@ -168,14 +154,14 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
         alignment: 0.0,
         duration: Duration.zero,
       );
-      setState(() => _scrollTargetParagraph = -1);
+      setState(() => _scrollTargetParagraphId = '');
       _jumpInProgress = false;
       _ensureRetries = 0;
       return;
     }
 
     if (++_ensureRetries > _maxEnsureRetries) {
-      setState(() => _scrollTargetParagraph = -1);
+      setState(() => _scrollTargetParagraphId = '');
       _jumpInProgress = false;
       _ensureRetries = 0;
       return;
@@ -183,14 +169,18 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
 
     // Estimate scroll position to bring the target into the builder's range.
     final paras = widget.store.paragraphsAt(widget.activeChapterSeq);
-    if (paras != null && paras.isNotEmpty && _scrollTargetParagraph >= 0) {
-      final vpHeight = _scrollController.position.viewportDimension;
-      final estimatedItemHeight = vpHeight / 4;
-      final target = _scrollTargetParagraph * estimatedItemHeight;
-      _scrollController.jumpTo(target.clamp(
-        _scrollController.position.minScrollExtent,
-        _scrollController.position.maxScrollExtent,
-      ));
+    if (paras != null && paras.isNotEmpty && _scrollTargetParagraphId.isNotEmpty) {
+      // Find the index of the target paragraph by ID
+      int targetIdx = paras.indexWhere((p) => p.id == _scrollTargetParagraphId);
+      if (targetIdx >= 0) {
+        final vpHeight = _scrollController.position.viewportDimension;
+        final estimatedItemHeight = vpHeight / 4;
+        final target = targetIdx * estimatedItemHeight;
+        _scrollController.jumpTo(target.clamp(
+          _scrollController.position.minScrollExtent,
+          _scrollController.position.maxScrollExtent,
+        ));
+      }
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -198,18 +188,18 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
     });
   }
 
-  void jumpTo(int paragraphIndex, double offset) {
+  void jumpTo(String paragraphId, double offset) {
     _jumpInProgress = true;
     _ensureRetries = 0;
-    if (paragraphIndex <= 0) {
+    if (paragraphId.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToOffset(offset);
         _jumpInProgress = false;
       });
       return;
     }
-    _scrollTargetParagraph = paragraphIndex;
-    _rebuildItems(); // refresh jump target key assignment
+    _scrollTargetParagraphId = paragraphId;
+    _rebuildItems();
     setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensureTargetVisible();
@@ -222,7 +212,6 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
     _forwardItems = _buildForwardItems();
     _reverseItems = _buildReverseItems();
 
-    // Clean up chapter keys for chapters no longer in the item lists.
     final activeSeqs = <int>{};
     for (final item in _forwardItems) {
       if (item.kind == _ResolvedItemKind.paragraph && item.localIndex == 0) {
@@ -237,17 +226,12 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
     _chapterKeys.removeWhere((seq, _) => !activeSeqs.contains(seq));
   }
 
-  /// Maximum number of chapters to walk in each direction from the active
-  /// chapter.  Must be less than ChapterStore._maxCacheSize / 2 to avoid the
-  /// evict-refetch infinite loop (store caches 7, we walk at most ±3 = 7
-  /// total including active).
-  static const _maxChapterWalk = 3;
+  static const _loadRadius = 2;
 
   List<_ResolvedItem> _buildForwardItems() {
     final store = widget.store;
     final items = <_ResolvedItem>[];
     int? seq = widget.activeChapterSeq;
-    int chaptersWalked = 0;
 
     while (seq != null && seq <= store.maxSeq) {
       final state = store.stateAt(seq);
@@ -259,38 +243,26 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
 
       final paras = store.paragraphsAt(seq);
       if (paras == null) {
-        store.ensureLoaded(seq);
+        if (store.chapterDistance(seq, store.activeSeq) <= _loadRadius) {
+          store.ensureLoaded(seq);
+        }
         items.add(_ResolvedItem.loading(seq));
         return items;
       }
 
-      // Add all paragraphs of this chapter.
       final chapterId = store.idAt(seq)!;
       for (int i = 0; i < paras.length; i++) {
         items.add(_ResolvedItem.paragraph(seq, i, paras[i], chapterId));
       }
 
-      chaptersWalked++;
-
-      // Gap after this chapter (if there is a next chapter)
       final next = store.nextSeq(seq);
       if (next != null) {
         items.add(_ResolvedItem.gap());
       }
 
-      // Stop walking if we've gone far enough from active chapter.
-      if (chaptersWalked >= _maxChapterWalk) {
-        // Show a loading sentinel so the user can scroll to trigger more.
-        if (next != null) {
-          items.add(_ResolvedItem.loading(next));
-        }
-        return items;
-      }
-
       seq = next;
     }
 
-    // Past the last chapter — end of book
     items.add(_ResolvedItem.endOfBook());
     return items;
   }
@@ -299,12 +271,10 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
     final store = widget.store;
     final items = <_ResolvedItem>[];
     int? seq = store.prevSeq(widget.activeChapterSeq);
-    int chaptersWalked = 0;
 
-    if (seq == null) return items; // nothing before active chapter
+    if (seq == null) return items;
 
     while (seq != null) {
-      // Gap between this chapter and the one after it (closer to anchor)
       items.add(_ResolvedItem.gap());
 
       final state = store.stateAt(seq);
@@ -315,27 +285,16 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
 
       final paras = store.paragraphsAt(seq);
       if (paras == null) {
-        store.ensureLoaded(seq);
+        if (store.chapterDistance(seq, store.activeSeq) <= _loadRadius) {
+          store.ensureLoaded(seq);
+        }
         items.add(_ResolvedItem.loading(seq));
         return items;
       }
 
-      // Add paragraphs in reverse order (last paragraph closest to anchor).
       final chapterId = store.idAt(seq)!;
       for (int i = paras.length - 1; i >= 0; i--) {
         items.add(_ResolvedItem.paragraph(seq, i, paras[i], chapterId));
-      }
-
-      chaptersWalked++;
-
-      // Stop walking if we've gone far enough from active chapter.
-      if (chaptersWalked >= _maxChapterWalk) {
-        final prev = store.prevSeq(seq);
-        if (prev != null) {
-          items.add(_ResolvedItem.gap());
-          items.add(_ResolvedItem.loading(prev));
-        }
-        return items;
       }
 
       seq = store.prevSeq(seq);
@@ -364,7 +323,6 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
 
     final store = widget.store;
 
-    // Collect all chapter seqs that have a key in the current item lists.
     final chapterSeqs = <int>{};
     for (final item in _forwardItems) {
       if (item.kind == _ResolvedItemKind.paragraph && item.localIndex == 0) {
@@ -382,7 +340,6 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
       return;
     }
 
-    // Find the RenderBox for the CustomScrollView to get its global position.
     final scrollContext = _scrollViewKey.currentContext;
     if (scrollContext == null) {
       _reportFallback(store, offset);
@@ -394,11 +351,9 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
       return;
     }
 
-    // Viewport top in global coordinates.
     final vpTopGlobal = scrollBox.localToGlobal(Offset.zero).dy;
     final vpCenterGlobal = vpTopGlobal + vpHeight / 2;
 
-    // Find which chapter's first paragraph is closest to (but above) viewport center.
     int? bestSeq;
     double bestY = double.negativeInfinity;
 
@@ -412,15 +367,12 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
 
       final topGlobal = box.localToGlobal(Offset.zero).dy;
 
-      // The chapter whose first paragraph's top is at or above viewport center
-      // and closest to it is the "current" chapter.
       if (topGlobal <= vpCenterGlobal && topGlobal > bestY) {
         bestY = topGlobal;
         bestSeq = seq;
       }
     }
 
-    // If no chapter starts above viewport center, pick the one closest below.
     if (bestSeq == null) {
       double closest = double.infinity;
       for (final seq in chapterSeqs) {
@@ -450,11 +402,10 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
       return;
     }
 
-    // Estimate paragraph index within the chapter based on how far
-    // the viewport center is past the chapter's first paragraph.
     final paras = store.paragraphsAt(bestSeq);
-    int paraIdx = 0;
+    String paragraphId = '';
     if (paras != null && paras.isNotEmpty) {
+      int paraIdx = 0;
       final chapterKey = _chapterKeys[bestSeq];
       if (chapterKey != null) {
         final ctx = chapterKey.currentContext;
@@ -464,9 +415,8 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
             final chapterTopGlobal = box.localToGlobal(Offset.zero).dy;
             final distPastStart = vpCenterGlobal - chapterTopGlobal;
 
-            // Find the next chapter's key to compute this chapter's total height.
             final nextSeq = store.nextSeq(bestSeq);
-            double chapterHeight = vpHeight; // fallback
+            double chapterHeight = vpHeight;
             if (nextSeq != null) {
               final nextKey = _chapterKeys[nextSeq];
               if (nextKey != null) {
@@ -488,16 +438,17 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
           }
         }
       }
+      paragraphId = paras[paraIdx].id;
     }
 
     store.setActive(bestSeq);
-    widget.onPositionUpdate(chapterId, paraIdx, offset);
+    widget.onPositionUpdate(chapterId, paragraphId, offset);
   }
 
   void _reportFallback(ChapterStore store, double offset) {
     final fallbackId = store.idAt(widget.activeChapterSeq);
     if (fallbackId != null) {
-      widget.onPositionUpdate(fallbackId, 0, offset);
+      widget.onPositionUpdate(fallbackId, '', offset);
     }
   }
 
@@ -570,16 +521,15 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
     final localIdx = item.localIndex!;
     final paragraph = item.paragraph!;
     final seq = item.chapterSeq!;
+    final paragraphId = paragraph.id;
 
     final isSelected = widget.selectedChapterId == chapterId &&
-        widget.selectedParagraphIndex == localIdx;
+        widget.selectedParagraphId == paragraphId;
 
     final isJumpTarget =
         chapterId == widget.store.idAt(widget.activeChapterSeq) &&
-            localIdx == _scrollTargetParagraph;
+            paragraphId == _scrollTargetParagraphId;
 
-    // Assign chapter key to first paragraph of each chapter (for position tracking).
-    // Jump target key takes priority when both apply.
     Key? widgetKey;
     if (isJumpTarget) {
       widgetKey = _jumpTargetKey;
@@ -604,7 +554,7 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
         selected: isSelected,
         onLongPress: widget.onParagraphLongPress != null
             ? (rect) => widget.onParagraphLongPress!(
-                chapterId, localIdx, paragraph, rect)
+                chapterId, paragraphId, paragraph, rect)
             : null,
       ),
     );

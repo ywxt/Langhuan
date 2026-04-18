@@ -43,15 +43,13 @@ class ChapterInfoModel {
   const ChapterInfoModel({
     required this.id,
     required this.title,
-    required this.index,
   });
 
   final String id;
   final String title;
-  final int index;
 
   factory ChapterInfoModel.fromRust(ChapterItem item) =>
-      ChapterInfoModel(id: item.id, title: item.title, index: item.index);
+      ChapterInfoModel(id: item.id, title: item.title);
 }
 
 @immutable
@@ -144,14 +142,14 @@ class ReadingProgressModel {
     required this.feedId,
     required this.bookId,
     required this.chapterId,
-    required this.paragraphIndex,
+    required this.paragraphId,
     required this.updatedAtMs,
   });
 
   final String feedId;
   final String bookId;
   final String chapterId;
-  final int paragraphIndex;
+  final String paragraphId;
   final int updatedAtMs;
 
   factory ReadingProgressModel.fromRust(ReadingProgressItem item) =>
@@ -159,7 +157,7 @@ class ReadingProgressModel {
         feedId: item.feedId,
         bookId: item.bookId,
         chapterId: item.chapterId,
-        paragraphIndex: item.paragraphIndex,
+        paragraphId: item.paragraphId,
         updatedAtMs: item.updatedAtMs,
       );
 }
@@ -171,7 +169,7 @@ class BookmarkModel {
     required this.feedId,
     required this.bookId,
     required this.chapterId,
-    required this.paragraphIndex,
+    required this.paragraphId,
     required this.paragraphName,
     required this.paragraphPreview,
     required this.label,
@@ -182,7 +180,7 @@ class BookmarkModel {
   final String feedId;
   final String bookId;
   final String chapterId;
-  final int paragraphIndex;
+  final String paragraphId;
   final String paragraphName;
   final String paragraphPreview;
   final String label;
@@ -193,7 +191,7 @@ class BookmarkModel {
     feedId: item.feedId,
     bookId: item.bookId,
     chapterId: item.chapterId,
-    paragraphIndex: item.paragraphIndex,
+    paragraphId: item.paragraphId,
     paragraphName: item.paragraphName,
     paragraphPreview: item.paragraphPreview,
     label: item.label,
@@ -413,14 +411,14 @@ class FeedService {
     required String feedId,
     required String bookId,
     required String chapterId,
-    required int paragraphIndex,
+    required String paragraphId,
     required int updatedAtMs,
   }) {
     return rust_progress.setReadingProgress(
       feedId: feedId,
       bookId: bookId,
       chapterId: chapterId,
-      paragraphIndex: paragraphIndex,
+      paragraphId: paragraphId,
       updatedAtMs: updatedAtMs,
     );
   }
@@ -446,7 +444,7 @@ class FeedService {
     required String feedId,
     required String bookId,
     required String chapterId,
-    required int paragraphIndex,
+    required String paragraphId,
     required String paragraphName,
     required String paragraphPreview,
     String label = '',
@@ -455,7 +453,7 @@ class FeedService {
       feedId: feedId,
       bookId: bookId,
       chapterId: chapterId,
-      paragraphIndex: paragraphIndex,
+      paragraphId: paragraphId,
       paragraphName: paragraphName,
       paragraphPreview: paragraphPreview,
       label: label,

@@ -12,15 +12,15 @@ class PageContentView extends StatelessWidget {
     required this.page,
     this.fontScale = 1.0,
     this.lineHeight = 1.8,
-    this.selectedParagraphIndex,
+    this.selectedParagraphId,
     this.onParagraphLongPress,
   });
 
   final PageContent page;
   final double fontScale;
   final double lineHeight;
-  final int? selectedParagraphIndex;
-  final void Function(int paragraphIndex, ParagraphContent paragraph, Rect globalRect)? onParagraphLongPress;
+  final String? selectedParagraphId;
+  final void Function(String paragraphId, ParagraphContent paragraph, Rect globalRect)? onParagraphLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -48,8 +48,8 @@ class PageContentView extends StatelessWidget {
 
   Widget _buildItem(BuildContext context, ThemeData theme, PageItem item) {
     final source = item.source;
-    final isSelected = selectedParagraphIndex == item.paragraphIndex;
-    Widget child = _buildContent(theme, item, source);
+    final isSelected = selectedParagraphId == item.paragraphId;
+    Widget child = _buildContent(context, theme, item, source);
 
     if (isSelected) {
       child = DecoratedBox(
@@ -67,7 +67,7 @@ class PageContentView extends StatelessWidget {
           final box = context.findRenderObject() as RenderBox?;
           if (box == null || !box.hasSize) return;
           final topLeft = box.localToGlobal(Offset.zero);
-          onParagraphLongPress!(item.paragraphIndex, source, topLeft & box.size);
+          onParagraphLongPress!(item.paragraphId, source, topLeft & box.size);
         },
         child: child,
       );
@@ -75,7 +75,7 @@ class PageContentView extends StatelessWidget {
     return child;
   }
 
-  Widget _buildContent(ThemeData theme, PageItem item, ParagraphContent source) {
+  Widget _buildContent(BuildContext context, ThemeData theme, PageItem item, ParagraphContent source) {
     if (source is ParagraphContent_Title) {
       return Text(
         source.text,
@@ -99,6 +99,9 @@ class PageContentView extends StatelessWidget {
     }
 
     if (source is ParagraphContent_Image) {
+      final screenWidth = MediaQuery.sizeOf(context).width;
+      final dpr = MediaQuery.devicePixelRatioOf(context);
+      final cacheWidth = (screenWidth * dpr).round();
       return Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -108,6 +111,7 @@ class PageContentView extends StatelessWidget {
             child: Image.network(
               source.url,
               fit: BoxFit.cover,
+              cacheWidth: cacheWidth,
               loadingBuilder: (context, child, progress) {
                 if (progress == null) return child;
                 return const AspectRatio(

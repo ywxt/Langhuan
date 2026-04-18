@@ -40,7 +40,7 @@ class ChapterContentManager extends StatefulWidget {
     required this.chineseConversion,
     this.onParagraphLongPress,
     this.selectedChapterId,
-    this.selectedParagraphIndex,
+    this.selectedParagraphId,
   });
 
   final String feedId;
@@ -54,12 +54,12 @@ class ChapterContentManager extends StatefulWidget {
   final ChineseConversionMode chineseConversion;
   final void Function(
     String chapterId,
-    int paragraphIndex,
+    String paragraphId,
     ParagraphContent paragraph,
     Rect globalRect,
   )? onParagraphLongPress;
   final String? selectedChapterId;
-  final int? selectedParagraphIndex;
+  final String? selectedParagraphId;
 
   @override
   State<ChapterContentManager> createState() => _ChapterContentManagerState();
@@ -68,33 +68,25 @@ class ChapterContentManager extends StatefulWidget {
 class _ChapterContentManagerState extends State<ChapterContentManager> {
   late ChapterStore _store;
 
-  /// Sequential index of the active (center) chapter.
   late int _activeSeq;
 
-  /// Whether the initial center chapter has been loaded.
   bool _centerReady = false;
 
-  /// Error from initial center load.
   Object? _centerError;
   String? _centerErrorMessage;
 
-  /// Generation counter for initial loads.
   int _initGeneration = 0;
 
-  /// Jump generation — bumped to force view recreation.
   int _jumpGeneration = 0;
 
-  /// Pending jump target for the reader view.
-  int _pendingJumpParagraph = 0;
+  String _pendingJumpParagraphId = '';
   double _pendingJumpOffset = 0;
   bool _pendingFromEnd = false;
 
-  /// Last reported position (for mode/font change preservation).
-  int _lastReportedParagraph = 0;
+  String _lastReportedParagraphId = '';
   double _lastReportedOffset = 0;
 
-  /// Mutable callback set by reader views on mount, cleared on dispose.
-  void Function(int paragraphIndex, double offset)? _onViewJump;
+  void Function(String paragraphId, double offset)? _onViewJump;
 
   // ─ Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -111,7 +103,7 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
     final startId = widget.controller.pendingChapterId ??
         (widget.chapters.isNotEmpty ? widget.chapters.first.id : '');
     _activeSeq = _store.seqOf(startId);
-    _pendingJumpParagraph = widget.controller.pendingParagraphIndex;
+    _pendingJumpParagraphId = widget.controller.pendingParagraphId;
     _pendingJumpOffset = widget.controller.pendingOffset;
     widget.controller.consumeJump();
     widget.controller.addListener(_onJumpCommand);
@@ -160,7 +152,7 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
 
     // Mode change: preserve current position and rebuild
     if (oldWidget.mode != widget.mode) {
-      _pendingJumpParagraph = _lastReportedParagraph;
+      _pendingJumpParagraphId = _lastReportedParagraphId;
       _pendingJumpOffset = _lastReportedOffset;
       _pendingFromEnd = false;
       _jumpGeneration++;
@@ -171,7 +163,7 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
     if (oldWidget.fontScale != widget.fontScale ||
         oldWidget.lineHeight != widget.lineHeight) {
       _store.invalidatePages();
-      _pendingJumpParagraph = _lastReportedParagraph;
+      _pendingJumpParagraphId = _lastReportedParagraphId;
       _pendingJumpOffset = 0;
       _pendingFromEnd = false;
       _jumpGeneration++;
@@ -183,7 +175,7 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
       _store.clearAll();
       _centerReady = false;
       _centerError = null;
-      _pendingJumpParagraph = _lastReportedParagraph;
+      _pendingJumpParagraphId = _lastReportedParagraphId;
       _pendingJumpOffset = 0;
       _pendingFromEnd = false;
       _jumpGeneration++;
@@ -238,7 +230,6 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
 
       if (!mounted || gen != _initGeneration) return;
 
-      // Store the data manually (bypassing store's async loading).
       _store.putDirect(_activeSeq, paragraphs);
       _store.setActive(_activeSeq);
 
@@ -261,7 +252,7 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
 
   void _consumePending() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _pendingJumpParagraph = 0;
+      _pendingJumpParagraphId = '';
       _pendingJumpOffset = 0;
       _pendingFromEnd = false;
     });
@@ -269,8 +260,8 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
 
   // ─ Position update callback from reader views ──────────────────────────
 
-  void _onPositionUpdate(String chapterId, int paragraphIndex, double offset) {
-    _lastReportedParagraph = paragraphIndex;
+  void _onPositionUpdate(String chapterId, String paragraphId, double offset) {
+    _lastReportedParagraphId = paragraphId;
     _lastReportedOffset = offset;
 
     // Update active chapter if it changed.
@@ -282,7 +273,7 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
 
     widget.controller.reportPosition(
       chapterId: chapterId,
-      paragraphIndex: paragraphIndex,
+      paragraphId: paragraphId,
       offset: offset,
     );
   }
@@ -294,7 +285,6 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
     if (seq < 0) return;
 
     if (seq == _activeSeq && _centerError != null) {
-      // Retry center: show loading overlay again
       setState(() {
         _centerReady = false;
         _centerError = null;
@@ -313,7 +303,7 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
     final targetId = widget.controller.pendingChapterId;
     if (targetId == null) return;
 
-    final paragraphIndex = widget.controller.pendingParagraphIndex;
+    final paragraphId = widget.controller.pendingParagraphId;
     final offset = widget.controller.pendingOffset;
     widget.controller.consumeJump();
 
@@ -322,10 +312,10 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
     if (targetSeq == _activeSeq) {
       // Same chapter: try in-place jump
       if (_onViewJump != null) {
-        _onViewJump!.call(paragraphIndex, offset);
+        _onViewJump!.call(paragraphId, offset);
         return;
       }
-      _pendingJumpParagraph = paragraphIndex;
+      _pendingJumpParagraphId = paragraphId;
       _pendingJumpOffset = offset;
       _pendingFromEnd = false;
       _jumpGeneration++;
@@ -335,7 +325,7 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
 
     // Different chapter: re-center
     _activeSeq = targetSeq;
-    _pendingJumpParagraph = paragraphIndex;
+    _pendingJumpParagraphId = paragraphId;
     _pendingJumpOffset = offset;
     _pendingFromEnd = false;
     _centerError = null;
@@ -344,18 +334,16 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
 
     widget.controller.reportPosition(
       chapterId: targetId,
-      paragraphIndex: paragraphIndex,
+      paragraphId: paragraphId,
       offset: offset,
     );
 
     if (_store.paragraphsAt(targetSeq) != null) {
-      // Fast path: already cached.
       _store.setActive(targetSeq);
       _centerReady = true;
       setState(() {});
       _consumePending();
     } else {
-      // Slow path: need to fetch.
       _centerReady = false;
       setState(() {});
       _initCenter();
@@ -385,7 +373,7 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
       return const SizedBox.shrink();
     }
 
-    final initialParagraph = _pendingJumpParagraph;
+    final initialParagraphId = _pendingJumpParagraphId;
     final initialOffset = _pendingJumpOffset;
     final initialFromEnd = _pendingFromEnd;
 
@@ -399,12 +387,12 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
         contentPadding: widget.contentPadding,
         onPositionUpdate: _onPositionUpdate,
         onRetry: _onRetry,
-        initialParagraphIndex: initialParagraph,
+        initialParagraphId: initialParagraphId,
         initialOffset: initialOffset,
         onJumpRegistered: (fn) => _onViewJump = fn,
         onParagraphLongPress: widget.onParagraphLongPress,
         selectedChapterId: widget.selectedChapterId,
-        selectedParagraphIndex: widget.selectedParagraphIndex,
+        selectedParagraphId: widget.selectedParagraphId,
       );
     }
 
@@ -417,12 +405,12 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
       contentPadding: widget.contentPadding,
       onPositionUpdate: _onPositionUpdate,
       onRetry: _onRetry,
-      initialParagraphIndex: initialParagraph,
+      initialParagraphId: initialParagraphId,
       initialFromEnd: initialFromEnd,
       onJumpRegistered: (fn) => _onViewJump = fn,
       onParagraphLongPress: widget.onParagraphLongPress,
       selectedChapterId: widget.selectedChapterId,
-      selectedParagraphIndex: widget.selectedParagraphIndex,
+      selectedParagraphId: widget.selectedParagraphId,
     );
   }
 }

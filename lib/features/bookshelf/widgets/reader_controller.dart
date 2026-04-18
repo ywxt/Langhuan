@@ -7,12 +7,12 @@ import 'package:flutter/foundation.dart';
 class ReaderPosition {
   const ReaderPosition({
     required this.chapterId,
-    required this.paragraphIndex,
+    required this.paragraphId,
     this.offset = 0,
   });
 
   final String chapterId;
-  final int paragraphIndex;
+  final String paragraphId;
   final double offset;
 }
 
@@ -32,31 +32,27 @@ class ReaderController extends ChangeNotifier {
   // ─ Jump command (parent → content manager) ─────────────────────────────
 
   String? _pendingChapterId;
-  int _pendingParagraphIndex = 0;
+  String _pendingParagraphId = '';
   double _pendingOffset = 0;
 
   String? get pendingChapterId => _pendingChapterId;
-  int get pendingParagraphIndex => _pendingParagraphIndex;
+  String get pendingParagraphId => _pendingParagraphId;
   double get pendingOffset => _pendingOffset;
 
-  /// Request a jump to a specific chapter and paragraph.
-  /// The content manager listens via [addListener] and consumes the pending
-  /// jump in the next frame.
   void jumpTo({
     required String chapterId,
-    int paragraphIndex = 0,
+    String paragraphId = '',
     double offset = 0,
   }) {
     _pendingChapterId = chapterId;
-    _pendingParagraphIndex = paragraphIndex;
+    _pendingParagraphId = paragraphId;
     _pendingOffset = offset;
     notifyListeners();
   }
 
-  /// Called by the content manager after consuming the jump.
   void consumeJump() {
     _pendingChapterId = null;
-    _pendingParagraphIndex = 0;
+    _pendingParagraphId = '';
     _pendingOffset = 0;
   }
 
@@ -66,15 +62,14 @@ class ReaderController extends ChangeNotifier {
   /// reading progress. The content manager never reads this.
   ValueChanged<ReaderPosition>? onPositionChanged;
 
-  /// Called by the content views when the visible chapter/paragraph changes.
   void reportPosition({
     required String chapterId,
-    required int paragraphIndex,
+    required String paragraphId,
     double offset = 0,
   }) {
     onPositionChanged?.call(ReaderPosition(
       chapterId: chapterId,
-      paragraphIndex: paragraphIndex,
+      paragraphId: paragraphId,
       offset: offset,
     ));
   }

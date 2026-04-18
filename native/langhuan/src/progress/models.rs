@@ -8,7 +8,7 @@ pub struct ReadingProgress {
     pub feed_id: String,
     pub book_id: String,
     pub chapter_id: String,
-    pub paragraph_index: usize,
+    pub paragraph_id: String,
     pub updated_at_ms: i64,
 }
 

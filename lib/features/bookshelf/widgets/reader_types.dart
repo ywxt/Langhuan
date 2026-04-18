@@ -9,13 +9,13 @@ import '../../../src/rust/api/types.dart';
 class ParagraphSelection {
   const ParagraphSelection({
     required this.chapterId,
-    required this.paragraphIndex,
+    required this.paragraphId,
     required this.paragraph,
     required this.rect,
   });
 
   final String chapterId;
-  final int paragraphIndex;
+  final String paragraphId;
   final ParagraphContent paragraph;
   final Rect rect;
 }

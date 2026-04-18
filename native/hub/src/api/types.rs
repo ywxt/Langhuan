@@ -112,13 +112,12 @@ pub struct SearchResultItem {
 pub struct ChapterItem {
     pub id: String,
     pub title: String,
-    pub index: u32,
 }
 
 pub enum ParagraphContent {
-    Title { text: String },
-    Text { content: String },
-    Image { url: String, alt: Option<String> },
+    Title { id: String, text: String },
+    Text { id: String, content: String },
+    Image { id: String, url: String, alt: Option<String> },
 }
 
 // ---------------------------------------------------------------------------
@@ -182,7 +181,7 @@ pub struct ReadingProgressItem {
     pub feed_id: String,
     pub book_id: String,
     pub chapter_id: String,
-    pub paragraph_index: u32,
+    pub paragraph_id: String,
     pub updated_at_ms: i64,
 }
 
@@ -195,7 +194,7 @@ pub struct BookmarkItem {
     pub feed_id: String,
     pub book_id: String,
     pub chapter_id: String,
-    pub paragraph_index: u32,
+    pub paragraph_id: String,
     pub paragraph_name: String,
     pub paragraph_preview: String,
     pub label: String,

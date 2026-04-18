@@ -26,7 +26,7 @@ pub struct SetReadingProgress {
     pub feed_id: String,
     pub book_id: String,
     pub chapter_id: String,
-    pub paragraph_index: u32,
+    pub paragraph_id: String,
     pub updated_at_ms: i64,
 }
 
@@ -88,7 +88,7 @@ impl Handler<GetReadingProgress> for ReadingProgressActor {
                 feed_id: item.feed_id,
                 book_id: item.book_id,
                 chapter_id: item.chapter_id,
-                paragraph_index: item.paragraph_index as u32,
+                paragraph_id: item.paragraph_id,
                 updated_at_ms: item.updated_at_ms,
             })),
             Err(e) => Err(BridgeError::from(e)),
@@ -110,7 +110,7 @@ impl Handler<SetReadingProgress> for ReadingProgressActor {
             feed_id: msg.feed_id,
             book_id: msg.book_id,
             chapter_id: msg.chapter_id,
-            paragraph_index: msg.paragraph_index as usize,
+            paragraph_id: msg.paragraph_id,
             updated_at_ms: msg.updated_at_ms,
         };
 

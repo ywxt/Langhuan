@@ -117,9 +117,9 @@ async fn drive_stream_transformed<S>(
             Ok(paragraph) => {
                 for p in transform_chain.apply(paragraph) {
                     let content = match p {
-                        Paragraph::Title { text } => ParagraphContent::Title { text },
-                        Paragraph::Text { content } => ParagraphContent::Text { content },
-                        Paragraph::Image { url, alt } => ParagraphContent::Image { url, alt },
+                        Paragraph::Title { id, text } => ParagraphContent::Title { id, text },
+                        Paragraph::Text { id, content } => ParagraphContent::Text { id, content },
+                        Paragraph::Image { id, url, alt } => ParagraphContent::Image { id, url, alt },
                     };
                     if tx.send(Ok(content)).await.is_err() {
                         return; // receiver dropped
@@ -267,7 +267,6 @@ impl Handler<OpenChaptersStream> for FeedActor {
             drive_stream(feed.chapters(&book_id), tx, |item| ChapterItem {
                 id: item.id,
                 title: item.title,
-                index: item.index,
             })
             .await
         }))
@@ -309,9 +308,9 @@ impl Handler<OpenParagraphsStream> for FeedActor {
                     feed.paragraphs(&book_id, &chapter_id),
                     tx,
                     |paragraph| match paragraph {
-                        Paragraph::Title { text } => ParagraphContent::Title { text },
-                        Paragraph::Text { content } => ParagraphContent::Text { content },
-                        Paragraph::Image { url, alt } => ParagraphContent::Image { url, alt },
+                        Paragraph::Title { id, text } => ParagraphContent::Title { id, text },
+                        Paragraph::Text { id, content } => ParagraphContent::Text { id, content },
+                        Paragraph::Image { id, url, alt } => ParagraphContent::Image { id, url, alt },
                     },
                 )
                 .await

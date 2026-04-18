@@ -10,7 +10,7 @@ pub struct Bookmark {
     pub feed_id: String,
     pub book_id: String,
     pub chapter_id: String,
-    pub paragraph_index: usize,
+    pub paragraph_id: String,
     #[serde(default)]
     pub paragraph_name: String,
     #[serde(default)]

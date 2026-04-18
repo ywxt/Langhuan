@@ -127,6 +127,14 @@ pub enum ScriptError {
     /// `auth_status` was called.
     #[error("feed {feed_id}: auth status check is not supported by this feed")]
     AuthStatusNotSupported { feed_id: String },
+
+    /// A Lua feed script returned duplicate IDs in a single stream.
+    #[error("feed {feed_id}: duplicate {kind} id: {id}")]
+    DuplicateId {
+        feed_id: String,
+        kind: String,
+        id: String,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -397,6 +405,20 @@ impl Error {
     pub fn auth_status_not_supported(feed_id: impl Into<String>) -> Self {
         ScriptError::AuthStatusNotSupported {
             feed_id: feed_id.into(),
+        }
+        .into()
+    }
+
+    #[inline]
+    pub fn duplicate_id(
+        feed_id: impl Into<String>,
+        kind: impl Into<String>,
+        id: impl Into<String>,
+    ) -> Self {
+        ScriptError::DuplicateId {
+            feed_id: feed_id.into(),
+            kind: kind.into(),
+            id: id.into(),
         }
         .into()
     }

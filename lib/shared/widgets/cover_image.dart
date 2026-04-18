@@ -52,9 +52,12 @@ class CoverImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fallback = placeholder ?? const CoverPlaceholder();
+    final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final cacheW = width != null ? (width! * devicePixelRatio).round() : null;
+    final cacheH = height != null ? (height! * devicePixelRatio).round() : null;
     final image = _isLocalFile
-        ? _buildFileImage(fallback)
-        : _buildNetworkImage(fallback);
+        ? _buildFileImage(fallback, cacheW, cacheH)
+        : _buildNetworkImage(fallback, cacheW, cacheH);
 
     // Use a sized Stack so the image defines the intrinsic size and the
     // placeholder fills behind it.  StackFit.expand would crash when the
@@ -66,11 +69,13 @@ class CoverImage extends StatelessWidget {
     );
   }
 
-  Widget _buildNetworkImage(Widget fallback) {
+  Widget _buildNetworkImage(Widget fallback, int? cacheW, int? cacheH) {
     return Image.network(
       url,
       width: width,
       height: height,
+      cacheWidth: cacheW,
+      cacheHeight: cacheH,
       fit: fit,
       frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
         if (wasSynchronouslyLoaded) return child;
@@ -85,7 +90,7 @@ class CoverImage extends StatelessWidget {
     );
   }
 
-  Widget _buildFileImage(Widget fallback) {
+  Widget _buildFileImage(Widget fallback, int? cacheW, int? cacheH) {
     final path = url.startsWith('file://') ? url.substring(7) : url;
     final file = File(path);
 
@@ -95,6 +100,8 @@ class CoverImage extends StatelessWidget {
       file,
       width: width,
       height: height,
+      cacheWidth: cacheW,
+      cacheHeight: cacheH,
       fit: fit,
       frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
         if (wasSynchronouslyLoaded) return child;

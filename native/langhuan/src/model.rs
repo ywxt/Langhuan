@@ -44,6 +44,12 @@ pub struct SearchResult {
     pub description: Option<String>,
 }
 
+impl SearchResult {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
 /// Detailed information about a book.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BookInfo {
@@ -68,8 +74,12 @@ pub struct ChapterInfo {
     pub id: String,
     /// Title of the chapter.
     pub title: String,
-    /// Zero-based index indicating the chapter's position in the book.
-    pub index: u32,
+}
+
+impl ChapterInfo {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 /// A single content unit in a chapter, emitted as part of a paragraphs stream.
@@ -77,13 +87,24 @@ pub struct ChapterInfo {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Paragraph {
     /// The chapter title (typically emitted first).
-    Title { text: String },
+    Title { id: String, text: String },
     /// A text paragraph.
-    Text { content: String },
+    Text { id: String, content: String },
     /// An image.
     Image {
+        id: String,
         url: String,
         #[serde(default)]
         alt: Option<String>,
     },
+}
+
+impl Paragraph {
+    pub fn id(&self) -> &str {
+        match self {
+            Paragraph::Title { id, .. }
+            | Paragraph::Text { id, .. }
+            | Paragraph::Image { id, .. } => id,
+        }
+    }
 }

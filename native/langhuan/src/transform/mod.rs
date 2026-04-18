@@ -152,6 +152,7 @@ mod tests {
         chain.push(Box::new(Duplicator));
 
         let input = Paragraph::Text {
+            id: "0".to_string(),
             content: "Hello".to_string(),
         };
         let output = chain.apply(input);
@@ -160,24 +161,28 @@ mod tests {
         assert_eq!(
             output[0],
             Paragraph::Text {
+                id: "0".to_string(),
                 content: "Hello".to_string()
             }
         );
         assert_eq!(
             output[1],
             Paragraph::Text {
+                id: "0".to_string(),
                 content: "Hello".to_string()
             }
         );
         assert_eq!(
             output[2],
             Paragraph::Text {
+                id: "0".to_string(),
                 content: "Hello".to_string()
             }
         );
         assert_eq!(
             output[3],
             Paragraph::Text {
+                id: "0".to_string(),
                 content: "Hello".to_string()
             }
         );

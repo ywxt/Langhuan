@@ -236,7 +236,7 @@ async fn paragraphs_supports_chaptercontent_br_layout() {
     let text_items: Vec<_> = items
         .iter()
         .filter_map(|p| match p {
-            langhuan::model::Paragraph::Text { content } => Some(content.as_str()),
+            langhuan::model::Paragraph::Text { content, .. } => Some(content.as_str()),
             _ => None,
         })
         .collect();

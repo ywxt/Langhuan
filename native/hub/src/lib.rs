@@ -67,6 +67,17 @@ pub(crate) fn localize_error(e: &langhuan::error::Error) -> String {
             ScriptError::AuthStatusNotSupported { feed_id } => {
                 t!("error.auth_status_not_supported", feed_id = feed_id).to_string()
             }
+            ScriptError::DuplicateId {
+                feed_id,
+                kind,
+                id,
+            } => t!(
+                "error.duplicate_id",
+                feed_id = feed_id,
+                kind = kind,
+                id = id
+            )
+            .to_string(),
         },
         Error::Registry(inner) => match inner {
             RegistryError::NotFound(e) => t!("error.registry_not_found", error = e).to_string(),

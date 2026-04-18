@@ -91,7 +91,7 @@ impl ReadingProgressStore {
                 feed_id = %feed_id,
                 book_id = %book_id,
                 chapter_id = %p.chapter_id,
-                paragraph_index = p.paragraph_index,
+                paragraph_id = %p.paragraph_id,
                 "reading progress found"
             ),
             None => {
@@ -106,7 +106,7 @@ impl ReadingProgressStore {
             feed_id = %progress.feed_id,
             book_id = %progress.book_id,
             chapter_id = %progress.chapter_id,
-            paragraph_index = progress.paragraph_index,
+            paragraph_id = %progress.paragraph_id,
             "saving reading progress"
         );
         if let Some(existing) =
@@ -180,7 +180,7 @@ mod tests {
             feed_id: "feed-a".to_string(),
             book_id: "book-1".to_string(),
             chapter_id: "chapter-10".to_string(),
-            paragraph_index: 12,
+            paragraph_id: "p-12".to_string(),
             updated_at_ms: 1_712_345_678_000,
         };
 
@@ -193,7 +193,7 @@ mod tests {
             .expect("expected stored progress");
 
         assert_eq!(loaded.chapter_id, "chapter-10");
-        assert_eq!(loaded.paragraph_index, 12);
+        assert_eq!(loaded.paragraph_id, "p-12");
     }
 
     #[tokio::test]
@@ -215,7 +215,7 @@ mod tests {
                 feed_id: "feed-a".into(),
                 book_id: "book-1".into(),
                 chapter_id: "ch-1".into(),
-                paragraph_index: 0,
+                paragraph_id: "p-0".into(),
                 updated_at_ms: old_ms,
             })
             .await
@@ -227,7 +227,7 @@ mod tests {
                 feed_id: "feed-b".into(),
                 book_id: "book-2".into(),
                 chapter_id: "ch-5".into(),
-                paragraph_index: 3,
+                paragraph_id: "p-3".into(),
                 updated_at_ms: old_ms,
             })
             .await
@@ -239,7 +239,7 @@ mod tests {
                 feed_id: "feed-c".into(),
                 book_id: "book-3".into(),
                 chapter_id: "ch-2".into(),
-                paragraph_index: 1,
+                paragraph_id: "p-1".into(),
                 updated_at_ms: now_ms,
             })
             .await

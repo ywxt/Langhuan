@@ -36,7 +36,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
         'feedId': widget.feedId,
         'bookId': widget.bookId,
         'chapterId': chapterId,
-        'paragraphIndex': '0',
+        'paragraphId': '',
       },
     );
   }
@@ -68,7 +68,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
       feedId: widget.feedId,
       bookId: widget.bookId,
       fallbackChapterId: fallbackChapterId,
-      fallbackParagraphIndex: 0,
+      fallbackParagraphId: '',
     );
   }
 
@@ -313,7 +313,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
                           overflow: TextOverflow.ellipsis,
                         ),
                         leading: Text(
-                          '${chapter.index + 1}',
+                          '${index + 1}',
                           style: theme.textTheme.labelMedium?.copyWith(
                             color: isLastRead
                                 ? theme.colorScheme.onPrimaryContainer

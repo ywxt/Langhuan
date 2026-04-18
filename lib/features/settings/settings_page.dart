@@ -268,7 +268,9 @@ class _ChineseConversionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final settings = ref.watch(readerSettingsProvider);
+    final chineseConversion = ref.watch(
+      readerSettingsProvider.select((s) => s.chineseConversion),
+    );
     final notifier = ref.read(readerSettingsProvider.notifier);
 
     String conversionLabel(ChineseConversionMode mode) {
@@ -284,7 +286,7 @@ class _ChineseConversionRow extends StatelessWidget {
       label: l10n.settingsChineseConversion,
       subtitle: l10n.settingsChineseConversionDescription,
       trailing: DropdownButton<ChineseConversionMode>(
-        value: settings.chineseConversion,
+        value: chineseConversion,
         underline: const SizedBox.shrink(),
         isDense: true,
         style: theme.textTheme.bodyMedium?.copyWith(

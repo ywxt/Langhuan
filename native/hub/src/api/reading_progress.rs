@@ -19,7 +19,7 @@ pub async fn set_reading_progress(
     feed_id: String,
     book_id: String,
     chapter_id: String,
-    paragraph_index: u32,
+    paragraph_id: String,
     updated_at_ms: i64,
 ) -> Result<(), BridgeError> {
     addresses()?
@@ -29,7 +29,7 @@ pub async fn set_reading_progress(
             feed_id,
             book_id,
             chapter_id,
-            paragraph_index,
+            paragraph_id,
             updated_at_ms,
         })
         .await?

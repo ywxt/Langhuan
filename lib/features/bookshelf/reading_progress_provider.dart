@@ -7,7 +7,7 @@ class ReadingProgressState {
     this.feedId = '',
     this.bookId = '',
     this.activeChapterId = '',
-    this.activeParagraphIndex = 0,
+    this.activeParagraphId = '',
     this.activeParagraphOffset = 0,
     this.progress,
     this.isLoading = false,
@@ -18,7 +18,7 @@ class ReadingProgressState {
   final String feedId;
   final String bookId;
   final String activeChapterId;
-  final int activeParagraphIndex;
+  final String activeParagraphId;
   final double activeParagraphOffset;
   final ReadingProgressModel? progress;
   final bool isLoading;
@@ -29,7 +29,7 @@ class ReadingProgressState {
     String? feedId,
     String? bookId,
     String? activeChapterId,
-    int? activeParagraphIndex,
+    String? activeParagraphId,
     double? activeParagraphOffset,
     ReadingProgressModel? Function()? progress,
     bool? isLoading,
@@ -40,7 +40,7 @@ class ReadingProgressState {
       feedId: feedId ?? this.feedId,
       bookId: bookId ?? this.bookId,
       activeChapterId: activeChapterId ?? this.activeChapterId,
-      activeParagraphIndex: activeParagraphIndex ?? this.activeParagraphIndex,
+      activeParagraphId: activeParagraphId ?? this.activeParagraphId,
       activeParagraphOffset:
           activeParagraphOffset ?? this.activeParagraphOffset,
       progress: progress != null ? progress() : this.progress,
@@ -57,12 +57,12 @@ class ReadingProgressNotifier extends Notifier<ReadingProgressState> {
 
   void hydrateInitialPosition({
     required String chapterId,
-    required int paragraphIndex,
+    required String paragraphId,
     double paragraphOffset = 0,
   }) {
     state = state.copyWith(
       activeChapterId: chapterId,
-      activeParagraphIndex: paragraphIndex,
+      activeParagraphId: paragraphId,
       activeParagraphOffset: paragraphOffset,
     );
   }
@@ -71,7 +71,7 @@ class ReadingProgressNotifier extends Notifier<ReadingProgressState> {
     required String feedId,
     required String bookId,
     required String fallbackChapterId,
-    int fallbackParagraphIndex = 0,
+    String fallbackParagraphId = '',
   }) async {
     state = state.copyWith(
       feedId: feedId,
@@ -86,10 +86,10 @@ class ReadingProgressNotifier extends Notifier<ReadingProgressState> {
         bookId: bookId,
       );
       final chapterId = progress?.chapterId ?? fallbackChapterId;
-      final paragraphIndex = progress?.paragraphIndex ?? fallbackParagraphIndex;
+      final paragraphId = progress?.paragraphId ?? fallbackParagraphId;
       hydrateInitialPosition(
         chapterId: chapterId,
-        paragraphIndex: paragraphIndex,
+        paragraphId: paragraphId,
       );
       state = state.copyWith(
         progress: () => progress,
@@ -99,22 +99,22 @@ class ReadingProgressNotifier extends Notifier<ReadingProgressState> {
     } catch (e) {
       hydrateInitialPosition(
         chapterId: fallbackChapterId,
-        paragraphIndex: fallbackParagraphIndex,
+        paragraphId: fallbackParagraphId,
       );
       state = state.copyWith(isLoading: false, error: () => e);
     }
   }
 
-  void setActiveChapter(String chapterId, {int paragraphIndex = 0}) {
+  void setActiveChapter(String chapterId, {String paragraphId = ''}) {
     state = state.copyWith(
       activeChapterId: chapterId,
-      activeParagraphIndex: paragraphIndex,
+      activeParagraphId: paragraphId,
       activeParagraphOffset: 0,
     );
   }
 
-  void setActiveParagraph(int paragraphIndex) {
-    state = state.copyWith(activeParagraphIndex: paragraphIndex);
+  void setActiveParagraph(String paragraphId) {
+    state = state.copyWith(activeParagraphId: paragraphId);
   }
 
   void setActiveOffset(double offset) {
@@ -136,7 +136,7 @@ class ReadingProgressNotifier extends Notifier<ReadingProgressState> {
         feedId: state.feedId,
         bookId: state.bookId,
         chapterId: state.activeChapterId,
-        paragraphIndex: state.activeParagraphIndex,
+        paragraphId: state.activeParagraphId,
         updatedAtMs: timestamp,
       );
 
@@ -145,7 +145,7 @@ class ReadingProgressNotifier extends Notifier<ReadingProgressState> {
           feedId: state.feedId,
           bookId: state.bookId,
           chapterId: state.activeChapterId,
-          paragraphIndex: state.activeParagraphIndex,
+          paragraphId: state.activeParagraphId,
           updatedAtMs: timestamp,
         ),
         isSaving: false,
@@ -160,13 +160,13 @@ class ReadingProgressNotifier extends Notifier<ReadingProgressState> {
     required String feedId,
     required String bookId,
     required String chapterId,
-    required int paragraphIndex,
+    required String paragraphId,
     int? updatedAtMs,
   }) async {
     state = state.copyWith(feedId: feedId, bookId: bookId);
     hydrateInitialPosition(
       chapterId: chapterId,
-      paragraphIndex: paragraphIndex,
+      paragraphId: paragraphId,
     );
     await saveActive(updatedAtMs: updatedAtMs);
   }

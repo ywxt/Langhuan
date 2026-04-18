@@ -37,21 +37,20 @@ class ChapterStore extends ChangeNotifier {
   late final int _minSeq;
   late final int _maxSeq;
 
-  /// Ordered list of chapter sequential indices (may have gaps).
+  /// Ordered list of chapter sequential indices.
   late final List<int> _sortedSeqs;
 
   void _buildIndexes() {
-    _idToSeq = {for (final c in chapters) c.id: c.index};
-    _seqToId = {for (final c in chapters) c.index: c.id};
+    _idToSeq = {for (int i = 0; i < chapters.length; i++) chapters[i].id: i};
+    _seqToId = {for (int i = 0; i < chapters.length; i++) i: chapters[i].id};
     if (chapters.isEmpty) {
       _minSeq = 0;
       _maxSeq = -1;
       _sortedSeqs = const [];
     } else {
-      final seqs = chapters.map((c) => c.index).toList()..sort();
-      _sortedSeqs = seqs;
-      _minSeq = seqs.first;
-      _maxSeq = seqs.last;
+      _sortedSeqs = List.generate(chapters.length, (i) => i);
+      _minSeq = 0;
+      _maxSeq = chapters.length - 1;
     }
   }
 
@@ -64,6 +63,19 @@ class ChapterStore extends ChangeNotifier {
 
   bool isFirst(int seq) => seq == _minSeq;
   bool isLast(int seq) => seq == _maxSeq;
+
+  /// Ordinal distance between two chapter seqs (number of chapters apart).
+  int chapterDistance(int a, int b) {
+    if (a == b) return 0;
+    int idxA = -1, idxB = -1;
+    for (int i = 0; i < _sortedSeqs.length; i++) {
+      if (_sortedSeqs[i] == a) idxA = i;
+      if (_sortedSeqs[i] == b) idxB = i;
+      if (idxA >= 0 && idxB >= 0) break;
+    }
+    if (idxA < 0 || idxB < 0) return 999;
+    return (idxA - idxB).abs();
+  }
 
   /// Returns the next valid sequential index after [seq], or null.
   int? nextSeq(int seq) {

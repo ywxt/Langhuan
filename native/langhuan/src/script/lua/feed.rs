@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::RwLock;
 use std::time::Duration;
 
@@ -6,6 +7,7 @@ use mlua::{FromLua, Lua, LuaSerdeExt, Value};
 use reqwest::Client;
 use serde::de::DeserializeOwned;
 use tokio::time::sleep;
+use tokio_stream::StreamExt as _;
 
 use crate::error::Result;
 use crate::feed::{
@@ -14,8 +16,8 @@ use crate::feed::{
 };
 use crate::http::{self, HttpRequest, HttpResponse};
 use crate::model::{BookInfo, ChapterInfo, Page, Paragraph, SearchResult};
-use crate::script::runtime::engine::timed_call;
 use crate::script::LUA_SERIALIZE_OPTIONS;
+use crate::script::runtime::engine::timed_call;
 
 // ---------------------------------------------------------------------------
 // Retry configuration
@@ -406,6 +408,53 @@ impl LuaFeed {
     async fn execute_http(&self, req: &HttpRequest) -> Result<HttpResponse> {
         http::execute(&self.client, &self.meta.id, &self.meta.access_domains, req).await
     }
+
+    // -----------------------------------------------------------------------
+    // Duplicate ID detection wrapper
+    // -----------------------------------------------------------------------
+
+    fn dedup_stream<'a, T, F>(
+        &'a self,
+        inner: FeedStream<'a, T>,
+        kind: &'static str,
+        get_id: F,
+    ) -> FeedStream<'a, T>
+    where
+        T: Send + 'a,
+        F: Fn(&T) -> String + Send + 'a,
+    {
+        let feed_id = self.meta.id.clone();
+        Box::pin(stream! {
+            let mut seen = HashSet::new();
+            let mut inner = std::pin::pin!(inner);
+            while let Some(result) = inner.next().await {
+                match result {
+                    Ok(item) => {
+                        let id = get_id(&item);
+                        if !seen.insert(id.clone()) {
+                            tracing::warn!(
+                                feed_id = %feed_id,
+                                kind,
+                                item_id = %id,
+                                "duplicate {kind} ID detected; skipping"
+                            );
+                            yield Err(crate::error::Error::duplicate_id (
+                                feed_id.clone(),
+                                kind,
+                                id,
+                            ));
+                            break;
+                        }
+                        yield Ok(item);
+                    }
+                    Err(err) => {
+                        yield Err(err);
+                        break;
+                    }
+                }
+            }
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -417,9 +466,10 @@ impl Feed for LuaFeed {
         let patch_context = RequestPatchContext::Search {
             feed_id: self.meta.id.clone(),
         };
-        self.paged_stream_by(&self.handlers.search, patch_context, move |cursor| {
+        let inner = self.paged_stream_by(&self.handlers.search, patch_context, move |cursor| {
             (keyword, cursor.clone())
-        })
+        });
+        self.dedup_stream(inner, "book", |item: &SearchResult| item.id.clone())
     }
 
     async fn book_info(&self, id: &str) -> Result<BookInfo> {
@@ -436,9 +486,10 @@ impl Feed for LuaFeed {
             feed_id: self.meta.id.clone(),
             book_id: book_id.to_owned(),
         };
-        self.paged_stream_by(&self.handlers.chapters, patch_context, move |cursor| {
+        let inner = self.paged_stream_by(&self.handlers.chapters, patch_context, move |cursor| {
             (book_id, cursor.clone())
-        })
+        });
+        self.dedup_stream(inner, "chapter", |item: &ChapterInfo| item.id.clone())
     }
 
     fn paragraphs<'a>(
@@ -451,9 +502,10 @@ impl Feed for LuaFeed {
             book_id: book_id.to_owned(),
             chapter_id: chapter_id.to_owned(),
         };
-        self.paged_stream_by(&self.handlers.paragraphs, patch_context, move |cursor| {
+        let inner = self.paged_stream_by(&self.handlers.paragraphs, patch_context, move |cursor| {
             (book_id, chapter_id, cursor.clone())
-        })
+        });
+        self.dedup_stream(inner, "paragraph", |item: &Paragraph| item.id().to_owned())
     }
 
     fn meta(&self) -> &FeedMeta {

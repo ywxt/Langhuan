@@ -28,12 +28,12 @@ class HorizontalReaderView extends StatefulWidget {
     required this.contentPadding,
     required this.onPositionUpdate,
     required this.onRetry,
-    this.initialParagraphIndex = 0,
+    this.initialParagraphId = '',
     this.initialFromEnd = false,
     this.onJumpRegistered,
     this.onParagraphLongPress,
     this.selectedChapterId,
-    this.selectedParagraphIndex,
+    this.selectedParagraphId,
   });
 
   final ChapterStore store;
@@ -41,20 +41,20 @@ class HorizontalReaderView extends StatefulWidget {
   final double fontScale;
   final double lineHeight;
   final EdgeInsets contentPadding;
-  final void Function(String chapterId, int paragraphIndex, double offset)
+  final void Function(String chapterId, String paragraphId, double offset)
       onPositionUpdate;
   final void Function(String chapterId) onRetry;
-  final int initialParagraphIndex;
+  final String initialParagraphId;
   final bool initialFromEnd;
-  final ValueChanged<void Function(int, double)>? onJumpRegistered;
+  final ValueChanged<void Function(String, double)>? onJumpRegistered;
   final void Function(
     String chapterId,
-    int paragraphIndex,
+    String paragraphId,
     ParagraphContent paragraph,
     Rect globalRect,
   )? onParagraphLongPress;
   final String? selectedChapterId;
-  final int? selectedParagraphIndex;
+  final String? selectedParagraphId;
 
   @override
   State<HorizontalReaderView> createState() => _HorizontalReaderViewState();
@@ -68,8 +68,6 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
 
   List<_FlatPageEntry> _flatPages = [];
 
-  /// Track what the user is currently viewing so we can find it again
-  /// after the flat page list is rebuilt.
   int? _currentChapterSeq;
   int _currentLocalPage = 0;
 
@@ -91,7 +89,6 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
       final initialPage = _computeInitialPage();
       _pageController.dispose();
       _pageController = PageController(initialPage: initialPage);
-      // Initialise current tracking
       if (initialPage >= 0 && initialPage < _flatPages.length) {
         final entry = _flatPages[initialPage];
         _currentChapterSeq = entry.chapterSeq;
@@ -128,24 +125,17 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
 
     _rebuildFlatPages();
 
-    // Find the same logical page in the new list using tracked position.
     if (_currentChapterSeq != null && _pageController.hasClients) {
       final currentPage = _pageController.page?.round() ?? 0;
       final newIndex = _findPageIndex(_currentChapterSeq!, _currentLocalPage);
       if (newIndex != null && newIndex != currentPage) {
-        // Jump without animation to maintain position.
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _pageController.hasClients) {
-            _pageController.jumpToPage(newIndex);
-          }
-        });
+        _pageController.jumpToPage(newIndex);
       }
     }
 
     setState(() {});
   }
 
-  /// Find the flat index for a given (chapterSeq, localPageIndex).
   int? _findPageIndex(int chapterSeq, int localPage) {
     for (int i = 0; i < _flatPages.length; i++) {
       final e = _flatPages[i];
@@ -187,10 +177,7 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
 
   // ─ Flat page list construction ────────────────────────────────────────
 
-  /// Maximum number of chapters to walk in each direction from the active
-  /// chapter.  Must be less than ChapterStore._maxCacheSize / 2 to avoid the
-  /// evict-refetch infinite loop.
-  static const _maxChapterWalk = 3;
+  static const _loadRadius = 2;
 
   void _rebuildFlatPages() {
     if (_breaker == null) {
@@ -201,14 +188,8 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
     final store = widget.store;
     final entries = <_FlatPageEntry>[];
 
-    // Walk backward from active chapter to build pages for prev chapters.
-    // We collect chapters in reverse order (nearest-first), then reverse the
-    // whole list so the earliest chapter comes first.  Within each chapter
-    // we add pages in *reverse* order so the final global reverse restores
-    // the correct per-chapter page order (0, 1, 2, …).
     final prevEntries = <_FlatPageEntry>[];
     int? seq = store.prevSeq(widget.activeChapterSeq);
-    int prevWalked = 0;
     while (seq != null) {
       final state = store.stateAt(seq);
       if (state is ChapterLoaded) {
@@ -219,14 +200,6 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
                 .add(_FlatPageEntry.page(seq, i, pages[i], store.idAt(seq)!));
           }
         }
-        prevWalked++;
-        if (prevWalked >= _maxChapterWalk) {
-          final prev = store.prevSeq(seq);
-          if (prev != null) {
-            prevEntries.add(_FlatPageEntry.loading(prev));
-          }
-          break;
-        }
       } else if (state is ChapterLoading) {
         prevEntries.add(_FlatPageEntry.loading(seq));
         break;
@@ -234,15 +207,15 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
         prevEntries.add(_FlatPageEntry.error(seq, state.message));
         break;
       } else {
-        store.ensureLoaded(seq);
+        if (store.chapterDistance(seq, store.activeSeq) <= _loadRadius) {
+          store.ensureLoaded(seq);
+        }
         prevEntries.add(_FlatPageEntry.loading(seq));
         break;
       }
       seq = store.prevSeq(seq);
     }
 
-    // Reverse so earliest chapter comes first, and pages within each
-    // chapter are now in the correct ascending order.
     entries.addAll(prevEntries.reversed);
 
     // Active chapter
@@ -260,7 +233,6 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
 
     // Walk forward from active chapter
     seq = store.nextSeq(widget.activeChapterSeq);
-    int fwdWalked = 0;
     while (seq != null) {
       final state = store.stateAt(seq);
       if (state is ChapterLoaded) {
@@ -271,14 +243,6 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
                 .add(_FlatPageEntry.page(seq, i, pages[i], store.idAt(seq)!));
           }
         }
-        fwdWalked++;
-        if (fwdWalked >= _maxChapterWalk) {
-          final next = store.nextSeq(seq);
-          if (next != null) {
-            entries.add(_FlatPageEntry.loading(next));
-          }
-          break;
-        }
       } else if (state is ChapterLoading) {
         entries.add(_FlatPageEntry.loading(seq));
         break;
@@ -286,7 +250,9 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
         entries.add(_FlatPageEntry.error(seq, state.message));
         break;
       } else {
-        store.ensureLoaded(seq);
+        if (store.chapterDistance(seq, store.activeSeq) <= _loadRadius) {
+          store.ensureLoaded(seq);
+        }
         entries.add(_FlatPageEntry.loading(seq));
         break;
       }
@@ -307,7 +273,6 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
   int _computeInitialPage() {
     if (_flatPages.isEmpty) return 0;
 
-    // Find the first page of the active chapter
     int activeStart = 0;
     for (int i = 0; i < _flatPages.length; i++) {
       if (_flatPages[i].kind == _FlatPageKind.page &&
@@ -330,13 +295,13 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
       return lastActive;
     }
 
-    if (widget.initialParagraphIndex > 0 && _breaker != null) {
+    if (widget.initialParagraphId.isNotEmpty && _breaker != null) {
       final pages =
           widget.store.pagesAt(widget.activeChapterSeq, _breaker!);
       if (pages != null && pages.isNotEmpty) {
         final localPage = PageBreaker.pageForParagraph(
           pages,
-          widget.initialParagraphIndex,
+          widget.initialParagraphId,
         );
         return activeStart + localPage;
       }
@@ -345,12 +310,12 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
     return activeStart;
   }
 
-  void _jumpToPosition(int paragraphIndex, double _) {
+  void _jumpToPosition(String paragraphId, double _) {
     if (!_pageController.hasClients || _breaker == null) return;
     final pages =
         widget.store.pagesAt(widget.activeChapterSeq, _breaker!);
     if (pages == null || pages.isEmpty) return;
-    final localPage = PageBreaker.pageForParagraph(pages, paragraphIndex);
+    final localPage = PageBreaker.pageForParagraph(pages, paragraphId);
     final target =
         _findPageIndex(widget.activeChapterSeq, localPage);
     if (target != null) {
@@ -364,7 +329,6 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
     if (index < 0 || index >= _flatPages.length) return;
     final entry = _flatPages[index];
 
-    // Always track what we're viewing
     if (entry.kind == _FlatPageKind.page) {
       _currentChapterSeq = entry.chapterSeq;
       _currentLocalPage = entry.localIndex ?? 0;
@@ -377,12 +341,11 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
 
       widget.onPositionUpdate(
         chapterId,
-        page.firstParagraphIndex,
+        page.firstParagraphId,
         0,
       );
     } else if (entry.kind == _FlatPageKind.loading &&
         entry.chapterSeq != null) {
-      // Ensure loading chapters get triggered when scrolled into view.
       widget.store.ensureLoaded(entry.chapterSeq!);
     }
   }
@@ -435,12 +398,12 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
         page: entry.page!,
         fontScale: widget.fontScale,
         lineHeight: widget.lineHeight,
-        selectedParagraphIndex:
-            isSelectedChapter ? widget.selectedParagraphIndex : null,
+        selectedParagraphId:
+            isSelectedChapter ? widget.selectedParagraphId : null,
         onParagraphLongPress: widget.onParagraphLongPress != null
-            ? (paragraphIndex, paragraph, rect) =>
+            ? (paragraphId, paragraph, rect) =>
                 widget.onParagraphLongPress!(
-                    chapterId, paragraphIndex, paragraph, rect)
+                    chapterId, paragraphId, paragraph, rect)
             : null,
       ),
     );
