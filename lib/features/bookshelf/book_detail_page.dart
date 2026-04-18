@@ -133,180 +133,207 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.bookDetailTitle)),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(
-          LanghuanTheme.spaceLg,
-          LanghuanTheme.spaceMd,
-          LanghuanTheme.spaceLg,
-          LanghuanTheme.spaceLg,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Hero(
-                tag: 'book-cover-${widget.feedId}-${widget.bookId}',
-                child: ClipRRect(
-                  borderRadius: LanghuanTheme.borderRadiusMd,
-                  child: SizedBox(
-                    width: 120,
-                    height: 160,
-                    child: book.coverUrl == null
-                        ? const _LargeCoverPlaceholder()
-                        : CoverImage(
-                            url: book.coverUrl!,
-                            placeholder: const _LargeCoverPlaceholder(),
+      body: CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+              LanghuanTheme.spaceLg,
+              LanghuanTheme.spaceMd,
+              LanghuanTheme.spaceLg,
+              LanghuanTheme.spaceMd,
+            ),
+            sliver: SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Hero(
+                      tag: 'book-cover-${widget.feedId}-${widget.bookId}',
+                      child: ClipRRect(
+                        borderRadius: LanghuanTheme.borderRadiusMd,
+                        child: SizedBox(
+                          width: 120,
+                          height: 160,
+                          child: book.coverUrl == null
+                              ? const _LargeCoverPlaceholder()
+                              : CoverImage(
+                                  url: book.coverUrl!,
+                                  placeholder: const _LargeCoverPlaceholder(),
+                                ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: LanghuanTheme.spaceLg),
+                  Text(book.title, style: theme.textTheme.headlineMedium),
+                  const SizedBox(height: LanghuanTheme.spaceXs),
+                  Text(
+                    book.author,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: LanghuanTheme.spaceMd),
+                  Text(
+                    (book.description == null || book.description!.isEmpty)
+                        ? l10n.bookDetailNoDescription
+                        : book.description!,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: LanghuanTheme.spaceLg),
+                  SizedBox(
+                    width: double.infinity,
+                    child:
+                        bookshelfState.contains(
+                          feedId: widget.feedId,
+                          sourceBookId: widget.bookId,
+                        )
+                        ? OutlinedButton(
+                            onPressed:
+                                !bookshelfReady ||
+                                    bookshelfState.activeItemId ==
+                                        '${widget.feedId}:${widget.bookId}'
+                                ? null
+                                : () => _removeFromBookshelf(context),
+                            child: Text(l10n.bookDetailRemoveBookshelf),
+                          )
+                        : FilledButton.tonal(
+                            onPressed:
+                                !bookshelfReady ||
+                                    bookshelfState.activeItemId ==
+                                        '${widget.feedId}:${widget.bookId}'
+                                ? null
+                                : () => _addToBookshelf(context),
+                            child: Text(l10n.bookDetailAddBookshelf),
                           ),
                   ),
-                ),
-              ),
-            ),
-            const SizedBox(height: LanghuanTheme.spaceLg),
-            Text(book.title, style: theme.textTheme.headlineMedium),
-            const SizedBox(height: LanghuanTheme.spaceXs),
-            Text(
-              book.author,
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: LanghuanTheme.spaceMd),
-            Text(
-              (book.description == null || book.description!.isEmpty)
-                  ? l10n.bookDetailNoDescription
-                  : book.description!,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: LanghuanTheme.spaceLg),
-            SizedBox(
-              width: double.infinity,
-              child:
-                  bookshelfState.contains(
-                    feedId: widget.feedId,
-                    sourceBookId: widget.bookId,
-                  )
-                  ? OutlinedButton(
-                      onPressed:
-                          !bookshelfReady ||
-                              bookshelfState.activeItemId ==
-                                  '${widget.feedId}:${widget.bookId}'
+                  const SizedBox(height: LanghuanTheme.spaceMd),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: chaptersState.items.isEmpty
                           ? null
-                          : () => _removeFromBookshelf(context),
-                      child: Text(l10n.bookDetailRemoveBookshelf),
-                    )
-                  : FilledButton.tonal(
-                      onPressed:
-                          !bookshelfReady ||
-                              bookshelfState.activeItemId ==
-                                  '${widget.feedId}:${widget.bookId}'
-                          ? null
-                          : () => _addToBookshelf(context),
-                      child: Text(l10n.bookDetailAddBookshelf),
-                    ),
-            ),
-            const SizedBox(height: LanghuanTheme.spaceMd),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: chaptersState.items.isEmpty
-                    ? null
-                    : () => _openReader(context, ''),
-                child: Text(
-                  progressState.progress != null
-                      ? l10n.bookDetailContinueReading
-                      : l10n.bookDetailStartReading,
-                ),
-              ),
-            ),
-            if (progressState.progress != null &&
-                chaptersState.items.any(
-                  (c) => c.id == progressState.progress!.chapterId,
-                ))
-              Padding(
-                padding: const EdgeInsets.only(top: LanghuanTheme.spaceXs),
-                child: Text(
-                  l10n.bookDetailLastReadChapter(
-                    chaptersState.items
-                        .firstWhere(
-                          (c) => c.id == progressState.progress!.chapterId,
-                        )
-                        .title,
-                  ),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            const SizedBox(height: LanghuanTheme.spaceXl),
-            Text(
-              l10n.bookDetailChapters(chaptersState.items.length),
-              style: theme.textTheme.titleLarge,
-            ),
-            const SizedBox(height: LanghuanTheme.spaceMd),
-            if (chaptersState.isLoading && chaptersState.items.isEmpty)
-              const LinearProgressIndicator()
-            else if (chaptersState.hasError && chaptersState.items.isEmpty)
-              ErrorState(
-                title: l10n.bookDetailChaptersError,
-                message: chaptersState.error.toString(),
-                onRetry: () => ref
-                    .read(chaptersProvider.notifier)
-                    .retry(feedId: widget.feedId),
-                retryLabel: l10n.bookDetailRetry,
-              )
-            else
-              ...chaptersState.items.map((chapter) {
-                final isLastRead =
-                    progressState.progress != null &&
-                    progressState.progress!.chapterId == chapter.id;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: LanghuanTheme.spaceSm),
-                  child: Material(
-                    color: isLastRead
-                        ? theme.colorScheme.primaryContainer
-                        : theme.colorScheme.surfaceContainer,
-                    borderRadius: LanghuanTheme.borderRadiusMd,
-                    child: ListTile(
-                      onTap: () => _openReader(context, chapter.id),
-                      dense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: LanghuanTheme.spaceMd,
-                        vertical: LanghuanTheme.spaceXs,
+                          : () => _openReader(context, ''),
+                      child: Text(
+                        progressState.progress != null
+                            ? l10n.bookDetailContinueReading
+                            : l10n.bookDetailStartReading,
                       ),
-                      title: Text(
-                        chapter.title,
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          color: isLastRead
-                              ? theme.colorScheme.onPrimaryContainer
-                              : null,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      leading: Text(
-                        '${chapter.index + 1}',
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: isLastRead
-                              ? theme.colorScheme.onPrimaryContainer
-                              : theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      trailing: isLastRead
-                          ? Icon(
-                              Icons.bookmark,
-                              size: 18,
-                              color: theme.colorScheme.onPrimaryContainer,
-                            )
-                          : null,
                     ),
                   ),
-                );
-              }),
-          ],
-        ),
+                  if (progressState.progress != null &&
+                      chaptersState.items.any(
+                        (c) => c.id == progressState.progress!.chapterId,
+                      ))
+                    Padding(
+                      padding: const EdgeInsets.only(top: LanghuanTheme.spaceXs),
+                      child: Text(
+                        l10n.bookDetailLastReadChapter(
+                          chaptersState.items
+                              .firstWhere(
+                                (c) => c.id == progressState.progress!.chapterId,
+                              )
+                              .title,
+                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  const SizedBox(height: LanghuanTheme.spaceXl),
+                  Text(
+                    l10n.bookDetailChapters(chaptersState.items.length),
+                    style: theme.textTheme.titleLarge,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (chaptersState.isLoading && chaptersState.items.isEmpty)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: LanghuanTheme.spaceLg),
+                child: LinearProgressIndicator(),
+              ),
+            )
+          else if (chaptersState.hasError && chaptersState.items.isEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: LanghuanTheme.spaceLg),
+                child: ErrorState(
+                  title: l10n.bookDetailChaptersError,
+                  message: chaptersState.error.toString(),
+                  onRetry: () => ref
+                      .read(chaptersProvider.notifier)
+                      .retry(feedId: widget.feedId),
+                  retryLabel: l10n.bookDetailRetry,
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(
+                LanghuanTheme.spaceLg,
+                LanghuanTheme.spaceMd,
+                LanghuanTheme.spaceLg,
+                LanghuanTheme.spaceLg,
+              ),
+              sliver: SliverList.builder(
+                itemCount: chaptersState.items.length,
+                itemBuilder: (context, index) {
+                  final chapter = chaptersState.items[index];
+                  final isLastRead =
+                      progressState.progress != null &&
+                      progressState.progress!.chapterId == chapter.id;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: LanghuanTheme.spaceSm),
+                    child: Material(
+                      color: isLastRead
+                          ? theme.colorScheme.primaryContainer
+                          : theme.colorScheme.surfaceContainer,
+                      borderRadius: LanghuanTheme.borderRadiusMd,
+                      child: ListTile(
+                        onTap: () => _openReader(context, chapter.id),
+                        dense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: LanghuanTheme.spaceMd,
+                          vertical: LanghuanTheme.spaceXs,
+                        ),
+                        title: Text(
+                          chapter.title,
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: isLastRead
+                                ? theme.colorScheme.onPrimaryContainer
+                                : null,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        leading: Text(
+                          '${chapter.index + 1}',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: isLastRead
+                                ? theme.colorScheme.onPrimaryContainer
+                                : theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        trailing: isLastRead
+                            ? Icon(
+                                Icons.bookmark,
+                                size: 18,
+                                color: theme.colorScheme.onPrimaryContainer,
+                              )
+                            : null,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
       ),
     );
   }
