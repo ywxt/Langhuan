@@ -121,6 +121,20 @@ pub enum ParagraphContent {
     Image { url: String, alt: Option<String> },
 }
 
+// ---------------------------------------------------------------------------
+// Chinese conversion types
+// ---------------------------------------------------------------------------
+
+/// Chinese text conversion mode, sent from Flutter.
+pub enum ChineseConversionMode {
+    /// No conversion — pass through unchanged.
+    None,
+    /// Simplified Chinese → Traditional Chinese.
+    S2t,
+    /// Traditional Chinese → Simplified Chinese.
+    T2s,
+}
+
 pub struct BookInfo {
     pub id: String,
     pub title: String,

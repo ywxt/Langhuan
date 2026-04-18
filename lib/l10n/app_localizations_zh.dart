@@ -248,6 +248,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get readerSettingPlaceholder => '此入口預留，後續擴展。';
 
   @override
+  String get readerChineseConversion => '繁簡轉換';
+
+  @override
+  String get chineseConversionNone => '不轉換';
+
+  @override
+  String get chineseConversionS2t => '簡體轉繁體';
+
+  @override
+  String get chineseConversionT2s => '繁體轉簡體';
+
+  @override
   String get feedsTitle => '書源';
 
   @override
@@ -433,6 +445,15 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get addFeedErrorInstall => '安裝書源失敗';
+
+  @override
+  String get settingsReading => '閱讀';
+
+  @override
+  String get settingsChineseConversion => '繁簡轉換';
+
+  @override
+  String get settingsChineseConversionDescription => '閱讀時自動轉換中文字體';
 
   @override
   String get settingsStorage => '存儲';

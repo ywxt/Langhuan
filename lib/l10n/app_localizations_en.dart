@@ -250,6 +250,18 @@ class AppLocalizationsEn extends AppLocalizations {
       'This entry is reserved for future settings.';
 
   @override
+  String get readerChineseConversion => 'Chinese Conversion';
+
+  @override
+  String get chineseConversionNone => 'Off';
+
+  @override
+  String get chineseConversionS2t => 'Simplified → Traditional';
+
+  @override
+  String get chineseConversionT2s => 'Traditional → Simplified';
+
+  @override
   String get feedsTitle => 'Feeds';
 
   @override
@@ -439,6 +451,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get addFeedErrorInstall => 'Failed to install feed';
+
+  @override
+  String get settingsReading => 'Reading';
+
+  @override
+  String get settingsChineseConversion => 'Chinese Conversion';
+
+  @override
+  String get settingsChineseConversionDescription =>
+      'Auto-convert Chinese text while reading';
 
   @override
   String get settingsStorage => 'Storage';

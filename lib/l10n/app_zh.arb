@@ -84,6 +84,11 @@
   "readerThemeSepia": "護眼",
   "readerSettingPlaceholder": "此入口預留，後續擴展。",
 
+  "readerChineseConversion": "繁簡轉換",
+  "chineseConversionNone": "不轉換",
+  "chineseConversionS2t": "簡體轉繁體",
+  "chineseConversionT2s": "繁體轉簡體",
+
   "feedsTitle": "書源",
   "feedsSearchHint": "搜索書源…",
   "feedsEmpty": "暫無書源\n請將腳本文件放入 scripts 文件夾",
@@ -152,6 +157,10 @@
   "addFeedSuccess": "書源安裝成功",
   "addFeedErrorPreview": "預覽書源失敗",
   "addFeedErrorInstall": "安裝書源失敗",
+
+  "settingsReading": "閱讀",
+  "settingsChineseConversion": "繁簡轉換",
+  "settingsChineseConversionDescription": "閱讀時自動轉換中文字體",
 
   "settingsStorage": "存儲",
   "settingsCleanupCache": "清理緩存",

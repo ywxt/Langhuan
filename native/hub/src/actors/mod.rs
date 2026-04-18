@@ -5,6 +5,7 @@
 pub(crate) mod app_data_actor;
 pub(crate) mod bookmark_actor;
 pub(crate) mod bookshelf_actor;
+pub(crate) mod conversion_actor;
 pub(crate) mod feed_actor;
 pub(crate) mod locale_actor;
 pub(crate) mod login_actor;
@@ -14,6 +15,7 @@ pub(crate) mod registry_actor;
 pub(crate) use app_data_actor::AppDataActor;
 pub(crate) use bookmark_actor::BookmarkActor;
 pub(crate) use bookshelf_actor::BookshelfActor;
+pub(crate) use conversion_actor::ConversionActor;
 pub(crate) use feed_actor::FeedActor;
 use langhuan::script::runtime::ScriptEngine;
 pub(crate) use locale_actor::LocaleActor;
@@ -40,6 +42,7 @@ pub(crate) struct ActorAddresses {
     pub locale: Address<LocaleActor>,
     pub app_data: Address<AppDataActor>,
     pub bookmark: Address<BookmarkActor>,
+    pub conversion: Address<ConversionActor>,
 }
 
 /// Returns a reference to the global actor addresses.
@@ -111,12 +114,20 @@ pub async fn create_actors() {
     spawn(reading_progress_context.run(reading_progress_actor));
     spawn(bookmark_context.run(bookmark_actor));
 
+    // ConversionActor — holds the current Chinese conversion mode and
+    // produces FilterChain instances for FeedActor.
+    tracing::debug!("creating conversion actor");
+    let conversion_context = Context::new();
+    let conversion_addr = conversion_context.address();
+    let conversion_actor = ConversionActor::new();
+    spawn(conversion_context.run(conversion_actor));
+
     // FeedActor — handles feed content streaming, resolves feeds via
     // Handler<GetFeed> on the RegistryActor.
     tracing::debug!("creating feed actor");
     let feed_context = Context::new();
     let feed_addr = feed_context.address();
-    let feed_actor = FeedActor::new(registry_addr.clone());
+    let feed_actor = FeedActor::new(registry_addr.clone(), conversion_addr.clone());
     spawn(feed_context.run(feed_actor));
 
     let bookshelf_actor = BookshelfActor::new(registry_addr.clone());
@@ -132,6 +143,7 @@ pub async fn create_actors() {
             locale: locale_addr,
             app_data: app_data_addr,
             bookmark: bookmark_addr,
+            conversion: conversion_addr,
         })
         .is_err()
     {

@@ -137,31 +137,38 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
       final wasBackward = oldWidget.prevChapterId == widget.centerChapterId;
       final wasForward = oldWidget.nextChapterId == widget.centerChapterId;
 
+      // Compute the target offset and apply it immediately via
+      // correctPixels so the FIRST layout pass already uses the right
+      // position — no 1-frame flash of the wrong scroll offset.
+      if (wasForward || wasBackward) {
+        final double delta;
+        if (wasForward) {
+          delta = -(oldCenterExt + _gap);
+        } else {
+          delta = oldPrevExt + _gap;
+        }
+        final target = oldOffset + delta;
+        if (_scrollController.hasClients) {
+          _scrollController.position.correctPixels(target);
+        }
+      }
+
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_scrollController.hasClients) {
           _jumpInProgress = false;
           return;
         }
-        // Anchor shift in the new coordinate space. Forward slide: the old
-        // center+gap region disappears from above the anchor, so every old
-        // offset shrinks by (oldCenterExt + gap). Backward: the old prev+gap
-        // region appears above the new anchor, so offsets grow.
-        final double delta;
-        if (wasForward) {
-          delta = -(oldCenterExt + _gap);
-        } else if (wasBackward) {
-          delta = oldPrevExt + _gap;
-        } else {
+        if (!wasForward && !wasBackward) {
           _scrollController.jumpTo(0);
-          _jumpInProgress = false;
-          return;
+        } else {
+          // Re-clamp after layout in case we ended up out of bounds.
+          final pos = _scrollController.position;
+          final current = pos.pixels;
+          final clamped = current.clamp(pos.minScrollExtent, pos.maxScrollExtent);
+          if (clamped != current) {
+            _scrollController.jumpTo(clamped);
+          }
         }
-        final target = oldOffset + delta;
-        final pos = _scrollController.position;
-        // Clamp to valid range only if needed — the new extents may still be
-        // settling. jumpTo will trigger another layout pass if needed.
-        final clamped = target.clamp(pos.minScrollExtent, pos.maxScrollExtent);
-        _scrollController.jumpTo(clamped);
         _jumpInProgress = false;
       });
     }
@@ -329,13 +336,16 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
   }
 
   void _reportChapter(String chapterId, double offset, double extent) {
-    // Note: we intentionally do NOT invoke widget.onChapterBoundary here.
-    // For the vertical view, sliding the window mid-scroll causes visible
-    // jumps because the sliver tree rebuilds and offsets rebase. Instead,
-    // we let the user keep scrolling through prev/center/next freely and
-    // only report the position. The manager only slides on explicit jumps
-    // (TOC / bookmark) or when the user leaves the reader and returns.
-    _reportedChapterId = chapterId;
+    if (chapterId != _reportedChapterId) {
+      // The viewport center has moved into a different chapter.
+      // Trigger a window slide so the manager loads the next adjacent chapter.
+      final direction = chapterId == widget.nextChapterId
+          ? ChapterDirection.next
+          : ChapterDirection.previous;
+      _reportedChapterId = chapterId;
+      widget.onChapterBoundary(direction);
+      return;
+    }
 
     // Estimate paragraph index
     final state = _stateFor(chapterId);

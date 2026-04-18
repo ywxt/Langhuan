@@ -73,7 +73,7 @@ pub struct ChapterInfo {
 }
 
 /// A single content unit in a chapter, emitted as part of a paragraphs stream.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Paragraph {
     /// The chapter title (typically emitted first).

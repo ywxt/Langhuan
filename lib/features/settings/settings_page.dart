@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/app_service.dart';
 import '../../shared/constants.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../src/rust/api/types.dart' show ChineseConversionMode;
+import '../bookshelf/reader_settings_provider.dart';
 
-class SettingsPage extends StatefulWidget {
+class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
 
   @override
-  State<SettingsPage> createState() => _SettingsPageState();
+  ConsumerState<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _isCleaning = false;
 
   Future<void> _cleanupCache() async {
@@ -65,6 +68,17 @@ class _SettingsPageState extends State<SettingsPage> {
                 style: theme.textTheme.headlineLarge,
               ),
             ),
+
+            // ── Reading section ──────────────────────────────────────
+            _SectionLabel(label: l10n.settingsReading),
+            const SizedBox(height: LanghuanTheme.spaceSm),
+            _SettingsCard(
+              children: [
+                _ChineseConversionRow(ref: ref, l10n: l10n),
+              ],
+            ),
+
+            const SizedBox(height: LanghuanTheme.spaceLg),
 
             // ── Storage section ────────────────────────────────────────
             _SectionLabel(label: l10n.settingsStorage),
@@ -240,6 +254,52 @@ class _SettingsDivider extends StatelessWidget {
       child: Divider(
         height: 1,
         color: Theme.of(context).colorScheme.outlineVariant,
+      ),
+    );
+  }
+}
+
+class _ChineseConversionRow extends StatelessWidget {
+  const _ChineseConversionRow({required this.ref, required this.l10n});
+
+  final WidgetRef ref;
+  final AppLocalizations l10n;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final settings = ref.watch(readerSettingsProvider);
+    final notifier = ref.read(readerSettingsProvider.notifier);
+
+    String conversionLabel(ChineseConversionMode mode) {
+      return switch (mode) {
+        ChineseConversionMode.none => l10n.chineseConversionNone,
+        ChineseConversionMode.s2T => l10n.chineseConversionS2t,
+        ChineseConversionMode.t2S => l10n.chineseConversionT2s,
+      };
+    }
+
+    return _SettingsRow(
+      icon: Icons.translate,
+      label: l10n.settingsChineseConversion,
+      subtitle: l10n.settingsChineseConversionDescription,
+      trailing: DropdownButton<ChineseConversionMode>(
+        value: settings.chineseConversion,
+        underline: const SizedBox.shrink(),
+        isDense: true,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        items: [
+          for (final mode in ChineseConversionMode.values)
+            DropdownMenuItem(
+              value: mode,
+              child: Text(conversionLabel(mode)),
+            ),
+        ],
+        onChanged: (mode) {
+          if (mode != null) notifier.setChineseConversion(mode);
+        },
       ),
     );
   }

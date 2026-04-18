@@ -262,6 +262,18 @@
   "readerSettingPlaceholder": "This entry is reserved for future settings.",
   "@readerSettingPlaceholder": { "description": "Placeholder text in reader settings sheet" },
 
+  "readerChineseConversion": "Chinese Conversion",
+  "@readerChineseConversion": { "description": "Reader settings: Chinese conversion label" },
+
+  "chineseConversionNone": "Off",
+  "@chineseConversionNone": { "description": "Chinese conversion mode: no conversion" },
+
+  "chineseConversionS2t": "Simplified \u2192 Traditional",
+  "@chineseConversionS2t": { "description": "Chinese conversion mode: simplified to traditional" },
+
+  "chineseConversionT2s": "Traditional \u2192 Simplified",
+  "@chineseConversionT2s": { "description": "Chinese conversion mode: traditional to simplified" },
+
   "feedsTitle": "Feeds",
   "@feedsTitle": { "description": "Feeds page title" },
 
@@ -464,6 +476,15 @@
 
   "addFeedErrorInstall": "Failed to install feed",
   "@addFeedErrorInstall": { "description": "Error message when install fails" },
+
+  "settingsReading": "Reading",
+  "@settingsReading": { "description": "Settings section: reading preferences" },
+
+  "settingsChineseConversion": "Chinese Conversion",
+  "@settingsChineseConversion": { "description": "Settings row: Chinese text conversion mode" },
+
+  "settingsChineseConversionDescription": "Auto-convert Chinese text while reading",
+  "@settingsChineseConversionDescription": { "description": "Subtitle for Chinese conversion setting" },
 
   "settingsStorage": "Storage",
   "@settingsStorage": { "description": "Settings section: storage management" },

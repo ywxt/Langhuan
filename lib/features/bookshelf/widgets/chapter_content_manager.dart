@@ -36,6 +36,7 @@ class ChapterContentManager extends StatefulWidget {
     required this.fontScale,
     required this.lineHeight,
     required this.contentPadding,
+    required this.chineseConversion,
     this.onParagraphLongPress,
     this.selectedChapterId,
     this.selectedParagraphIndex,
@@ -49,6 +50,7 @@ class ChapterContentManager extends StatefulWidget {
   final double fontScale;
   final double lineHeight;
   final EdgeInsets contentPadding;
+  final ChineseConversionMode chineseConversion;
   final void Function(String chapterId, int paragraphIndex, ParagraphContent paragraph, Rect globalRect)? onParagraphLongPress;
   final String? selectedChapterId;
   final int? selectedParagraphIndex;
@@ -162,6 +164,21 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
       _pendingFromEnd = false;
       _jumpGeneration++;
       setState(() {});
+    }
+
+    // Conversion mode change: clear cached paragraphs and reload
+    if (oldWidget.chineseConversion != widget.chineseConversion) {
+      _cache.clear();
+      _centerReady = false;
+      _centerError = null;
+      _pendingJumpParagraph = _lastReportedParagraph;
+      _pendingJumpOffset = 0;
+      _pendingFromEnd = false;
+      _prevSlot.value = const ChapterIdle();
+      _centerSlot.value = const ChapterLoading();
+      _nextSlot.value = const ChapterIdle();
+      _jumpGeneration++;
+      _initCenter();
     }
   }
 
@@ -342,14 +359,27 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
   }
 
   void _performSlide(ChapterDirection direction, String newCenterId) {
+    _centerChapterId = newCenterId;
+    _pendingFromEnd = direction == ChapterDirection.previous;
+    _pendingJumpOffset = 0;
+
+    // For backward slides, start at the last paragraph so the user
+    // sees the end of the chapter they just scrolled into.
+    if (_pendingFromEnd) {
+      final paragraphs = _cache[newCenterId];
+      _pendingJumpParagraph =
+          (paragraphs != null && paragraphs.isNotEmpty)
+              ? paragraphs.length - 1
+              : 0;
+    } else {
+      _pendingJumpParagraph = 0;
+    }
+
     // Report position to parent
     widget.controller.reportPosition(
       chapterId: newCenterId,
-      paragraphIndex: 0,
+      paragraphIndex: _pendingJumpParagraph,
     );
-
-    _centerChapterId = newCenterId;
-    _pendingFromEnd = direction == ChapterDirection.previous;
 
     final prev = _prevId(newCenterId);
     final next = _nextId(newCenterId);
@@ -367,9 +397,16 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
       _nextSlot.value = const ChapterIdle();
     }
 
-    // Boundary fires on ScrollEndNotification: animation already settled.
-    // Rebuild without bumping _jumpGeneration so the view updates in place
-    // via didUpdateWidget (no State recreation, no input-blocking gap).
+    // Horizontal mode: bump generation so the PageView is fully recreated
+    // with the correct initial page. Its internal page-count state cannot
+    // be patched reliably via didUpdateWidget.
+    //
+    // Vertical mode: keep the same generation so the existing ScrollController
+    // stays alive and didUpdateWidget translates the scroll offset in-place,
+    // giving a seamless visual transition.
+    if (widget.mode != ReaderMode.verticalScroll) {
+      _jumpGeneration++;
+    }
     setState(() {});
     _loadAdjacent(newCenterId);
   }

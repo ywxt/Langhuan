@@ -11,6 +11,7 @@ use langhuan::cache::CachedFeed;
 use langhuan::feed::Feed;
 use langhuan::model::Paragraph;
 use langhuan::script::lua::LuaFeed;
+use langhuan::transform::TransformChain;
 use messages::prelude::{Actor, Address, Context, Handler};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -18,6 +19,7 @@ use tokio_stream::StreamExt;
 
 use crate::api::types::{BookInfo, BridgeError, ChapterItem, ParagraphContent, SearchResultItem};
 
+use super::conversion_actor::{BuildTransformChain, ConversionActor};
 use super::registry_actor::{GetFeed, RegistryActor};
 
 // ---------------------------------------------------------------------------
@@ -98,6 +100,40 @@ async fn drive_stream<S, SrcItem, T, F>(
     }
 }
 
+/// Like [`drive_stream`] but runs each paragraph through a [`TransformChain`].
+///
+/// A single input paragraph may produce zero or more output paragraphs after
+/// transformation (drop / insert).
+async fn drive_stream_transformed<S>(
+    stream: S,
+    tx: mpsc::Sender<Result<ParagraphContent, BridgeError>>,
+    mut transform_chain: TransformChain,
+) where
+    S: tokio_stream::Stream<Item = Result<Paragraph, langhuan::error::Error>>,
+{
+    tokio::pin!(stream);
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(paragraph) => {
+                for p in transform_chain.apply(paragraph) {
+                    let content = match p {
+                        Paragraph::Title { text } => ParagraphContent::Title { text },
+                        Paragraph::Text { content } => ParagraphContent::Text { content },
+                        Paragraph::Image { url, alt } => ParagraphContent::Image { url, alt },
+                    };
+                    if tx.send(Ok(content)).await.is_err() {
+                        return; // receiver dropped
+                    }
+                }
+            }
+            Err(e) => {
+                let _ = tx.send(Err(BridgeError::from(e))).await;
+                return; // terminate stream on error
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Messages
 // ---------------------------------------------------------------------------
@@ -132,13 +168,20 @@ pub struct OpenParagraphsStream {
 
 pub struct FeedActor {
     registry_addr: Address<RegistryActor>,
+    conversion_addr: Address<ConversionActor>,
 }
 
 impl Actor for FeedActor {}
 
 impl FeedActor {
-    pub fn new(registry_addr: Address<RegistryActor>) -> Self {
-        Self { registry_addr }
+    pub fn new(
+        registry_addr: Address<RegistryActor>,
+        conversion_addr: Address<ConversionActor>,
+    ) -> Self {
+        Self {
+            registry_addr,
+            conversion_addr,
+        }
     }
 
     async fn resolve_feed(
@@ -248,19 +291,42 @@ impl Handler<OpenParagraphsStream> for FeedActor {
             feed.clear_chapter_cache(&msg.book_id, &msg.chapter_id)
                 .await?;
         }
+
+        // Build a transform chain from the current conversion settings.
+        let mut transform_chain: TransformChain = self
+            .conversion_addr
+            .send(BuildTransformChain)
+            .await
+            .map_err(BridgeError::from)?;
+
         let book_id = msg.book_id;
         let chapter_id = msg.chapter_id;
-        Ok(spawn_pull_stream(|tx| async move {
-            drive_stream(
-                feed.paragraphs(&book_id, &chapter_id),
-                tx,
-                |paragraph| match paragraph {
-                    Paragraph::Title { text } => ParagraphContent::Title { text },
-                    Paragraph::Text { content } => ParagraphContent::Text { content },
-                    Paragraph::Image { url, alt } => ParagraphContent::Image { url, alt },
-                },
-            )
-            .await
-        }))
+
+        if transform_chain.is_empty() {
+            // Fast path — no transforms, avoid per-paragraph overhead.
+            Ok(spawn_pull_stream(|tx| async move {
+                drive_stream(
+                    feed.paragraphs(&book_id, &chapter_id),
+                    tx,
+                    |paragraph| match paragraph {
+                        Paragraph::Title { text } => ParagraphContent::Title { text },
+                        Paragraph::Text { content } => ParagraphContent::Text { content },
+                        Paragraph::Image { url, alt } => ParagraphContent::Image { url, alt },
+                    },
+                )
+                .await
+            }))
+        } else {
+            // Transform path — init the chain and apply to each paragraph.
+            transform_chain.init(&chapter_id);
+            Ok(spawn_pull_stream(|tx| async move {
+                drive_stream_transformed(
+                    feed.paragraphs(&book_id, &chapter_id),
+                    tx,
+                    transform_chain,
+                )
+                .await
+            }))
+        }
     }
 }

@@ -448,6 +448,62 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     );
   }
 
+  Future<void> _openSettingsSheet() async {
+    final l10n = AppLocalizations.of(context);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => Consumer(
+        builder: (context, ref, _) {
+          final settings = ref.watch(readerSettingsProvider);
+          final notifier = ref.read(readerSettingsProvider.notifier);
+
+          String conversionLabel(ChineseConversionMode mode) {
+            return switch (mode) {
+              ChineseConversionMode.none => l10n.chineseConversionNone,
+              ChineseConversionMode.s2T => l10n.chineseConversionS2t,
+              ChineseConversionMode.t2S => l10n.chineseConversionT2s,
+            };
+          }
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(LanghuanTheme.spaceLg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  l10n.readerSettings,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: LanghuanTheme.spaceMd),
+                Text(
+                  l10n.readerChineseConversion,
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+                const SizedBox(height: LanghuanTheme.spaceSm),
+                SegmentedButton<ChineseConversionMode>(
+                  segments: [
+                    for (final mode in ChineseConversionMode.values)
+                      ButtonSegment(
+                        value: mode,
+                        label: Text(conversionLabel(mode)),
+                      ),
+                  ],
+                  selected: {settings.chineseConversion},
+                  onSelectionChanged: (set) {
+                    notifier.setChineseConversion(set.first);
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildSelectionToolbar(ThemeData theme) {
     final sel = _selection!;
     final l10n = AppLocalizations.of(context);
@@ -600,6 +656,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                     mode: settings.mode,
                     fontScale: settings.fontScale,
                     lineHeight: settings.lineHeight,
+                    chineseConversion: settings.chineseConversion,
                     contentPadding: EdgeInsets.fromLTRB(
                       LanghuanTheme.spaceLg,
                       topPadding + LanghuanTheme.spaceMd,
@@ -671,7 +728,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                           },
                           onOpenToc: _openTocSheet,
                           onOpenInterface: _openInterfaceSheet,
-                          onOpenSettings: () {},
+                          onOpenSettings: _openSettingsSheet,
                         ),
                       ),
                     ),

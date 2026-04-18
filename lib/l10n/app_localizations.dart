@@ -548,6 +548,30 @@ abstract class AppLocalizations {
   /// **'This entry is reserved for future settings.'**
   String get readerSettingPlaceholder;
 
+  /// Reader settings: Chinese conversion label
+  ///
+  /// In en, this message translates to:
+  /// **'Chinese Conversion'**
+  String get readerChineseConversion;
+
+  /// Chinese conversion mode: no conversion
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get chineseConversionNone;
+
+  /// Chinese conversion mode: simplified to traditional
+  ///
+  /// In en, this message translates to:
+  /// **'Simplified → Traditional'**
+  String get chineseConversionS2t;
+
+  /// Chinese conversion mode: traditional to simplified
+  ///
+  /// In en, this message translates to:
+  /// **'Traditional → Simplified'**
+  String get chineseConversionT2s;
+
   /// Feeds page title
   ///
   /// In en, this message translates to:
@@ -901,6 +925,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed to install feed'**
   String get addFeedErrorInstall;
+
+  /// Settings section: reading preferences
+  ///
+  /// In en, this message translates to:
+  /// **'Reading'**
+  String get settingsReading;
+
+  /// Settings row: Chinese text conversion mode
+  ///
+  /// In en, this message translates to:
+  /// **'Chinese Conversion'**
+  String get settingsChineseConversion;
+
+  /// Subtitle for Chinese conversion setting
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-convert Chinese text while reading'**
+  String get settingsChineseConversionDescription;
 
   /// Settings section: storage management
   ///

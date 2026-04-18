@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../src/rust/api/conversion.dart' as rust_conversion;
+import '../../src/rust/api/types.dart' show ChineseConversionMode;
+
 enum ReaderMode { verticalScroll, horizontalPaging }
 
 enum ReaderThemeMode { system, light, dark, sepia }
@@ -11,24 +14,28 @@ class ReaderSettingsState {
     this.fontScale = 1.0,
     this.lineHeight = 1.8,
     this.themeMode = ReaderThemeMode.system,
+    this.chineseConversion = ChineseConversionMode.none,
   });
 
   final ReaderMode mode;
   final double fontScale;
   final double lineHeight;
   final ReaderThemeMode themeMode;
+  final ChineseConversionMode chineseConversion;
 
   ReaderSettingsState copyWith({
     ReaderMode? mode,
     double? fontScale,
     double? lineHeight,
     ReaderThemeMode? themeMode,
+    ChineseConversionMode? chineseConversion,
   }) {
     return ReaderSettingsState(
       mode: mode ?? this.mode,
       fontScale: fontScale ?? this.fontScale,
       lineHeight: lineHeight ?? this.lineHeight,
       themeMode: themeMode ?? this.themeMode,
+      chineseConversion: chineseConversion ?? this.chineseConversion,
     );
   }
 }
@@ -51,6 +58,12 @@ class ReaderSettingsNotifier extends Notifier<ReaderSettingsState> {
 
   void setThemeMode(ReaderThemeMode mode) {
     state = state.copyWith(themeMode: mode);
+  }
+
+  void setChineseConversion(ChineseConversionMode mode) {
+    state = state.copyWith(chineseConversion: mode);
+    // Fire-and-forget: notify Rust backend so subsequent streams use this mode.
+    rust_conversion.setChineseConversionMode(mode: mode);
   }
 }
 
