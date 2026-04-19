@@ -85,6 +85,13 @@ impl std::fmt::Display for CacheKeyMismatchError {
 // Expected error codes (Lua → Rust structured errors)
 // ---------------------------------------------------------------------------
 
+pub(crate) const ERROR_RAISE: &str = "raise";
+pub(crate) const ERROR_AUTH_REQUIRED: &str = "auth_required";
+pub(crate) const ERROR_CF_CHALLENGE: &str = "cf_challenge";
+pub(crate) const ERROR_RATE_LIMITED: &str = "rate_limited";
+pub(crate) const ERROR_CONTENT_NOT_FOUND: &str = "content_not_found";
+pub(crate) const ERROR_SOURCE_UNAVAILABLE: &str = "source_unavailable";
+
 /// Error codes that Lua scripts can raise via `@langhuan/error` to signal
 /// an anticipated condition (as opposed to a runtime bug).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,11 +107,11 @@ pub enum ExpectedErrorCode {
 impl ExpectedErrorCode {
     pub fn from_code(code: &str) -> Self {
         match code {
-            "auth_required" => Self::AuthRequired,
-            "cf_challenge" => Self::CfChallenge,
-            "rate_limited" => Self::RateLimited,
-            "content_not_found" => Self::ContentNotFound,
-            "source_unavailable" => Self::SourceUnavailable,
+            ERROR_AUTH_REQUIRED => Self::AuthRequired,
+            ERROR_CF_CHALLENGE => Self::CfChallenge,
+            ERROR_RATE_LIMITED => Self::RateLimited,
+            ERROR_CONTENT_NOT_FOUND => Self::ContentNotFound,
+            ERROR_SOURCE_UNAVAILABLE => Self::SourceUnavailable,
             other => Self::Unknown(other.to_owned()),
         }
     }

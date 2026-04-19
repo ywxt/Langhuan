@@ -91,7 +91,7 @@ impl ChapterInfo {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ParagraphId {
-    Index(usize),
+    Index(u64),
     Id(String),
 }
 
@@ -183,7 +183,7 @@ impl RawParagraph {
     pub(crate) fn into_paragraph(self, index: usize) -> Paragraph {
         let make_id = |opt: Option<String>| match opt {
             Some(s) => ParagraphId::Id(s),
-            None => ParagraphId::Index(index),
+            None => ParagraphId::Index(index as u64),
         };
         match self {
             RawParagraph::Title { id, text } => Paragraph::Title {

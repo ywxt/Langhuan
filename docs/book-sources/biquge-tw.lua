@@ -472,7 +472,6 @@ local function parse_paragraph_items(resp)
                     if text ~= "" then
                         table.insert(items, {
                             type = "text",
-                            id = generate_id(),
                             content = text,
                         })
                     end

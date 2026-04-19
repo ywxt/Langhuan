@@ -357,7 +357,7 @@ Returns: [`Page`](#page) of `Paragraph`. Each paragraph is a tagged table with a
 | `{ type = "text", id = string?, content = string }`             | `id`: `string` (optional), `content`: `string` (required)                         | Text paragraph        |
 | `{ type = "image", id = string?, url = string, alt = string? }` | `id`: `string` (optional), `url`: `string` (required), `alt`: `string` (optional) | Inline image          |
 
-**Paragraph ID:** The `id` field is optional. When omitted (`nil`), the runtime automatically assigns a sequential index (0, 1, 2, …) within the chapter. When provided, the value is used as-is. If your source provides stable, unique identifiers for paragraphs, pass them through; otherwise, simply omit `id` and let the runtime handle it.
+**Paragraph ID:** The `id` field is optional. When omitted (`nil`), the runtime automatically assigns a sequential index (**you should not rely on the specific values**) within the chapter. When provided, the value is used as-is. If your source provides stable, unique identifiers for paragraphs, pass them through; otherwise, simply omit `id` and let the runtime handle it.
 
 **ID uniqueness:** Whether assigned automatically or provided by the script, IDs must be unique across all paragraphs within a single chapter (including across multiple pages when `next_cursor` is used). The runtime validates this and returns an error when a duplicate ID is encountered.
 

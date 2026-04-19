@@ -4,46 +4,49 @@ import '../../../l10n/app_localizations.dart';
 import '../../../shared/theme/app_theme.dart';
 import '../../../src/rust/api/types.dart';
 import 'chapter_status_block.dart';
-import 'chapter_store.dart';
 import 'page_breaker.dart';
 import 'page_content_view.dart';
 import 'reader_types.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Horizontal reader view — flat page list with stable index tracking
-//
-// Uses PageView.builder with a flat page list built from ChapterStore data.
-// When chapters load and the list grows, we track what the user is currently
-// viewing (chapterSeq + localPageIndex) and translate that back to the new
-// flat index so the PageController stays on the same logical page.
-// ─────────────────────────────────────────────────────────────────────────────
-
 class HorizontalReaderView extends StatefulWidget {
   const HorizontalReaderView({
     super.key,
-    required this.store,
-    required this.activeChapterSeq,
+    required this.centerChapterId,
+    this.prevChapterId,
+    this.nextChapterId,
+    required this.prevSlot,
+    required this.centerSlot,
+    required this.nextSlot,
     required this.fontScale,
     required this.lineHeight,
     required this.contentPadding,
     required this.onPositionUpdate,
     required this.onRetry,
+    required this.isFirst,
+    required this.isLast,
     this.initialParagraphId = '',
     this.initialFromEnd = false,
     this.onJumpRegistered,
     this.onParagraphLongPress,
     this.selectedChapterId,
     this.selectedParagraphId,
+    this.onChapterBoundary,
   });
 
-  final ChapterStore store;
-  final int activeChapterSeq;
+  final String centerChapterId;
+  final String? prevChapterId;
+  final String? nextChapterId;
+  final ValueNotifier<ChapterLoadState> prevSlot;
+  final ValueNotifier<ChapterLoadState> centerSlot;
+  final ValueNotifier<ChapterLoadState> nextSlot;
   final double fontScale;
   final double lineHeight;
   final EdgeInsets contentPadding;
   final void Function(String chapterId, String paragraphId, double offset)
       onPositionUpdate;
   final void Function(String chapterId) onRetry;
+  final bool isFirst;
+  final bool isLast;
   final String initialParagraphId;
   final bool initialFromEnd;
   final ValueChanged<void Function(String, double)>? onJumpRegistered;
@@ -55,6 +58,7 @@ class HorizontalReaderView extends StatefulWidget {
   )? onParagraphLongPress;
   final String? selectedChapterId;
   final String? selectedParagraphId;
+  final void Function(int direction)? onChapterBoundary;
 
   @override
   State<HorizontalReaderView> createState() => _HorizontalReaderViewState();
@@ -65,35 +69,31 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
   bool _initialized = false;
 
   PageBreaker? _breaker;
+  List<PageContent> _pages = [];
 
-  List<_FlatPageEntry> _flatPages = [];
+  int _contentOffset = 0;
 
-  int? _currentChapterSeq;
-  int _currentLocalPage = 0;
+  bool _prevTriggered = false;
+  bool _nextTriggered = false;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController();
     widget.onJumpRegistered?.call(_jumpToPosition);
-    widget.store.addListener(_onStoreChanged);
+    widget.centerSlot.addListener(_onCenterSlotChanged);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _breaker = _createBreaker();
-    _rebuildFlatPages();
+    _rebuildPages();
     if (!_initialized) {
       _initialized = true;
       final initialPage = _computeInitialPage();
       _pageController.dispose();
       _pageController = PageController(initialPage: initialPage);
-      if (initialPage >= 0 && initialPage < _flatPages.length) {
-        final entry = _flatPages[initialPage];
-        _currentChapterSeq = entry.chapterSeq;
-        _currentLocalPage = entry.localIndex ?? 0;
-      }
     }
   }
 
@@ -101,51 +101,54 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
   void didUpdateWidget(covariant HorizontalReaderView oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (oldWidget.store != widget.store) {
-      oldWidget.store.removeListener(_onStoreChanged);
-      widget.store.addListener(_onStoreChanged);
+    if (oldWidget.centerSlot != widget.centerSlot) {
+      oldWidget.centerSlot.removeListener(_onCenterSlotChanged);
+      widget.centerSlot.addListener(_onCenterSlotChanged);
+    }
+
+    if (oldWidget.centerChapterId != widget.centerChapterId) {
+      _prevTriggered = false;
+      _nextTriggered = false;
+      _rebuildPages();
+      final targetPage = widget.initialFromEnd && _pages.isNotEmpty
+          ? _contentOffset + _pages.length - 1
+          : _contentOffset;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_pageController.hasClients) {
+          _pageController.jumpToPage(targetPage);
+        }
+      });
+      return;
     }
 
     if (oldWidget.fontScale != widget.fontScale ||
         oldWidget.lineHeight != widget.lineHeight ||
         oldWidget.contentPadding != widget.contentPadding) {
       _breaker = _createBreaker();
+      _rebuildPages();
     }
   }
 
   @override
   void dispose() {
-    widget.store.removeListener(_onStoreChanged);
+    widget.centerSlot.removeListener(_onCenterSlotChanged);
     _pageController.dispose();
     super.dispose();
   }
 
-  void _onStoreChanged() {
+  void _onCenterSlotChanged() {
     if (!mounted) return;
-
-    _rebuildFlatPages();
-
-    if (_currentChapterSeq != null && _pageController.hasClients) {
-      final currentPage = _pageController.page?.round() ?? 0;
-      final newIndex = _findPageIndex(_currentChapterSeq!, _currentLocalPage);
-      if (newIndex != null && newIndex != currentPage) {
-        _pageController.jumpToPage(newIndex);
-      }
-    }
-
+    final hadPages = _pages.isNotEmpty;
+    _rebuildPages();
     setState(() {});
-  }
-
-  int? _findPageIndex(int chapterSeq, int localPage) {
-    for (int i = 0; i < _flatPages.length; i++) {
-      final e = _flatPages[i];
-      if (e.kind == _FlatPageKind.page &&
-          e.chapterSeq == chapterSeq &&
-          e.localIndex == localPage) {
-        return i;
-      }
+    if (!hadPages && _pages.isNotEmpty) {
+      final initialPage = _computeInitialPage();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_pageController.hasClients) {
+          _pageController.jumpToPage(initialPage);
+        }
+      });
     }
-    return null;
   }
 
   PageBreaker _createBreaker() {
@@ -175,178 +178,85 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
     );
   }
 
-  // ─ Flat page list construction ────────────────────────────────────────
+  List<ParagraphContent>? get _centerParagraphs {
+    final state = widget.centerSlot.value;
+    if (state is ChapterLoaded) return state.paragraphs;
+    return null;
+  }
 
-  static const _loadRadius = 2;
+  bool get _hasPrevious => widget.prevChapterId != null;
+  bool get _hasNext => widget.nextChapterId != null;
 
-  void _rebuildFlatPages() {
-    if (_breaker == null) {
-      _flatPages = [];
+  void _rebuildPages() {
+    final paragraphs = _centerParagraphs;
+    if (_breaker == null || paragraphs == null || paragraphs.isEmpty) {
+      _pages = [];
+      _contentOffset = _hasPrevious ? 1 : 0;
       return;
     }
+    _pages = _breaker!.computePages(paragraphs);
+    _contentOffset = _hasPrevious ? 1 : 0;
+  }
 
-    final store = widget.store;
-    final entries = <_FlatPageEntry>[];
-
-    final prevEntries = <_FlatPageEntry>[];
-    int? seq = store.prevSeq(widget.activeChapterSeq);
-    while (seq != null) {
-      final state = store.stateAt(seq);
-      if (state is ChapterLoaded) {
-        final pages = store.pagesAt(seq, _breaker!);
-        if (pages != null && pages.isNotEmpty) {
-          for (int i = pages.length - 1; i >= 0; i--) {
-            prevEntries
-                .add(_FlatPageEntry.page(seq, i, pages[i], store.idAt(seq)!));
-          }
-        }
-      } else if (state is ChapterLoading) {
-        prevEntries.add(_FlatPageEntry.loading(seq));
-        break;
-      } else if (state is ChapterLoadError) {
-        prevEntries.add(_FlatPageEntry.error(seq, state.message));
-        break;
-      } else {
-        if (store.chapterDistance(seq, store.activeSeq) <= _loadRadius) {
-          store.ensureLoaded(seq);
-        }
-        prevEntries.add(_FlatPageEntry.loading(seq));
-        break;
-      }
-      seq = store.prevSeq(seq);
-    }
-
-    entries.addAll(prevEntries.reversed);
-
-    // Active chapter
-    seq = widget.activeChapterSeq;
-    final activeState = store.stateAt(seq);
-    if (activeState is ChapterLoaded) {
-      final pages = store.pagesAt(seq, _breaker!);
-      if (pages != null && pages.isNotEmpty) {
-        for (int i = 0; i < pages.length; i++) {
-          entries
-              .add(_FlatPageEntry.page(seq, i, pages[i], store.idAt(seq)!));
-        }
-      }
-    }
-
-    // Walk forward from active chapter
-    seq = store.nextSeq(widget.activeChapterSeq);
-    while (seq != null) {
-      final state = store.stateAt(seq);
-      if (state is ChapterLoaded) {
-        final pages = store.pagesAt(seq, _breaker!);
-        if (pages != null && pages.isNotEmpty) {
-          for (int i = 0; i < pages.length; i++) {
-            entries
-                .add(_FlatPageEntry.page(seq, i, pages[i], store.idAt(seq)!));
-          }
-        }
-      } else if (state is ChapterLoading) {
-        entries.add(_FlatPageEntry.loading(seq));
-        break;
-      } else if (state is ChapterLoadError) {
-        entries.add(_FlatPageEntry.error(seq, state.message));
-        break;
-      } else {
-        if (store.chapterDistance(seq, store.activeSeq) <= _loadRadius) {
-          store.ensureLoaded(seq);
-        }
-        entries.add(_FlatPageEntry.loading(seq));
-        break;
-      }
-      seq = store.nextSeq(seq);
-    }
-
-    // End of book sentinel
-    if (entries.isNotEmpty && entries.last.kind == _FlatPageKind.page) {
-      final lastSeq = entries.last.chapterSeq;
-      if (lastSeq != null && store.isLast(lastSeq)) {
-        entries.add(_FlatPageEntry.endOfBook());
-      }
-    }
-
-    _flatPages = entries;
+  int get _totalPageCount {
+    int count = _pages.length;
+    if (_hasPrevious) count++;
+    if (_hasNext) count++;
+    if (!_hasNext) count++;
+    return count;
   }
 
   int _computeInitialPage() {
-    if (_flatPages.isEmpty) return 0;
-
-    int activeStart = 0;
-    for (int i = 0; i < _flatPages.length; i++) {
-      if (_flatPages[i].kind == _FlatPageKind.page &&
-          _flatPages[i].chapterSeq == widget.activeChapterSeq) {
-        activeStart = i;
-        break;
-      }
-    }
+    if (_pages.isEmpty) return 0;
 
     if (widget.initialFromEnd) {
-      int lastActive = activeStart;
-      for (int i = activeStart; i < _flatPages.length; i++) {
-        if (_flatPages[i].kind == _FlatPageKind.page &&
-            _flatPages[i].chapterSeq == widget.activeChapterSeq) {
-          lastActive = i;
-        } else {
-          break;
-        }
-      }
-      return lastActive;
+      return _contentOffset + _pages.length - 1;
     }
 
     if (widget.initialParagraphId.isNotEmpty && _breaker != null) {
-      final pages =
-          widget.store.pagesAt(widget.activeChapterSeq, _breaker!);
-      if (pages != null && pages.isNotEmpty) {
-        final localPage = PageBreaker.pageForParagraph(
-          pages,
-          widget.initialParagraphId,
-        );
-        return activeStart + localPage;
-      }
+      final localPage =
+          PageBreaker.pageForParagraph(_pages, widget.initialParagraphId);
+      return _contentOffset + localPage;
     }
 
-    return activeStart;
+    return _contentOffset;
   }
 
   void _jumpToPosition(String paragraphId, double _) {
-    if (!_pageController.hasClients || _breaker == null) return;
-    final pages =
-        widget.store.pagesAt(widget.activeChapterSeq, _breaker!);
-    if (pages == null || pages.isEmpty) return;
-    final localPage = PageBreaker.pageForParagraph(pages, paragraphId);
-    final target =
-        _findPageIndex(widget.activeChapterSeq, localPage);
-    if (target != null) {
-      _pageController.jumpToPage(target);
+    if (!_pageController.hasClients || _breaker == null || _pages.isEmpty) {
+      return;
     }
+    final localPage = PageBreaker.pageForParagraph(_pages, paragraphId);
+    final target = _contentOffset + localPage;
+    _pageController.jumpToPage(target);
   }
 
   // ─ Page change tracking ───────────────────────────────────────────────
 
   void _onPageChanged(int index) {
-    if (index < 0 || index >= _flatPages.length) return;
-    final entry = _flatPages[index];
+    if (index < 0 || index >= _totalPageCount) return;
 
-    if (entry.kind == _FlatPageKind.page) {
-      _currentChapterSeq = entry.chapterSeq;
-      _currentLocalPage = entry.localIndex ?? 0;
+    if (_hasPrevious && index == 0 && !_prevTriggered) {
+      _prevTriggered = true;
+      widget.onChapterBoundary?.call(-1);
+      return;
+    }
 
-      final chapterId = entry.chapterId!;
-      final page = entry.page!;
-      final seq = entry.chapterSeq!;
+    final contentEnd = _contentOffset + _pages.length;
+    if (_hasNext && index >= contentEnd && !_nextTriggered) {
+      _nextTriggered = true;
+      widget.onChapterBoundary?.call(1);
+      return;
+    }
 
-      widget.store.setActive(seq);
-
+    final contentIdx = index - _contentOffset;
+    if (contentIdx >= 0 && contentIdx < _pages.length) {
+      final page = _pages[contentIdx];
       widget.onPositionUpdate(
-        chapterId,
+        widget.centerChapterId,
         page.firstParagraphId,
         0,
       );
-    } else if (entry.kind == _FlatPageKind.loading &&
-        entry.chapterSeq != null) {
-      widget.store.ensureLoaded(entry.chapterSeq!);
     }
   }
 
@@ -354,48 +264,48 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_flatPages.isEmpty) {
+    if (_pages.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
 
     return PageView.builder(
       controller: _pageController,
-      itemCount: _flatPages.length,
+      itemCount: _totalPageCount,
       onPageChanged: _onPageChanged,
       itemBuilder: (context, index) {
-        if (index < 0 || index >= _flatPages.length) {
+        if (_hasPrevious && index == 0) {
+          return const Center(
+            child: ChapterStatusBlock(kind: ChapterStatusBlockKind.loading),
+          );
+        }
+
+        final contentEnd = _contentOffset + _pages.length;
+        if (index >= contentEnd) {
+          if (_hasNext) {
+            return const Center(
+              child: ChapterStatusBlock(kind: ChapterStatusBlockKind.loading),
+            );
+          }
+          return _buildEndOfBook(context);
+        }
+
+        final contentIdx = index - _contentOffset;
+        if (contentIdx < 0 || contentIdx >= _pages.length) {
           return const SizedBox.shrink();
         }
-        final entry = _flatPages[index];
-
-        return switch (entry.kind) {
-          _FlatPageKind.page => _buildPage(context, entry),
-          _FlatPageKind.loading => _buildLoadingPage(entry),
-          _FlatPageKind.error => Center(
-              child: ChapterStatusBlock(
-                kind: ChapterStatusBlockKind.error,
-                message: entry.errorMessage,
-                onRetry: () {
-                  final chapterId =
-                      widget.store.idAt(entry.chapterSeq!);
-                  if (chapterId != null) widget.onRetry(chapterId);
-                },
-              ),
-            ),
-          _FlatPageKind.endOfBook => _buildEndOfBook(context),
-        };
+        return _buildPage(context, contentIdx);
       },
     );
   }
 
-  Widget _buildPage(BuildContext context, _FlatPageEntry entry) {
-    final chapterId = entry.chapterId!;
-    final isSelectedChapter = widget.selectedChapterId == chapterId;
+  Widget _buildPage(BuildContext context, int pageIdx) {
+    final isSelectedChapter =
+        widget.selectedChapterId == widget.centerChapterId;
 
     return Padding(
       padding: widget.contentPadding,
       child: PageContentView(
-        page: entry.page!,
+        page: _pages[pageIdx],
         fontScale: widget.fontScale,
         lineHeight: widget.lineHeight,
         selectedParagraphId:
@@ -403,15 +313,9 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
         onParagraphLongPress: widget.onParagraphLongPress != null
             ? (paragraphId, paragraph, rect) =>
                 widget.onParagraphLongPress!(
-                    chapterId, paragraphId, paragraph, rect)
+                    widget.centerChapterId, paragraphId, paragraph, rect)
             : null,
       ),
-    );
-  }
-
-  Widget _buildLoadingPage(_FlatPageEntry entry) {
-    return const Center(
-      child: ChapterStatusBlock(kind: ChapterStatusBlockKind.loading),
     );
   }
 
@@ -426,57 +330,4 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView> {
       ),
     );
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Flat page entry — one entry per PageView slot
-// ─────────────────────────────────────────────────────────────────────────────
-
-enum _FlatPageKind { page, loading, error, endOfBook }
-
-class _FlatPageEntry {
-  _FlatPageEntry._({
-    required this.kind,
-    this.chapterSeq,
-    this.localIndex,
-    this.page,
-    this.chapterId,
-    this.errorMessage,
-  });
-
-  factory _FlatPageEntry.page(
-    int seq,
-    int localIndex,
-    PageContent page,
-    String chapterId,
-  ) =>
-      _FlatPageEntry._(
-        kind: _FlatPageKind.page,
-        chapterSeq: seq,
-        localIndex: localIndex,
-        page: page,
-        chapterId: chapterId,
-      );
-
-  factory _FlatPageEntry.loading(int seq) => _FlatPageEntry._(
-        kind: _FlatPageKind.loading,
-        chapterSeq: seq,
-      );
-
-  factory _FlatPageEntry.error(int seq, String message) => _FlatPageEntry._(
-        kind: _FlatPageKind.error,
-        chapterSeq: seq,
-        errorMessage: message,
-      );
-
-  factory _FlatPageEntry.endOfBook() => _FlatPageEntry._(
-        kind: _FlatPageKind.endOfBook,
-      );
-
-  final _FlatPageKind kind;
-  final int? chapterSeq;
-  final int? localIndex;
-  final PageContent? page;
-  final String? chapterId;
-  final String? errorMessage;
 }

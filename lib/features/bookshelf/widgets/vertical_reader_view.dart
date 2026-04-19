@@ -1,58 +1,53 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../../l10n/app_localizations.dart';
 import '../../../shared/theme/app_theme.dart';
 import '../../../src/rust/api/types.dart';
 import '../../feeds/feed_service.dart' show ParagraphIdStringExt;
 import 'chapter_status_block.dart';
-import 'chapter_store.dart';
 import 'paragraph_view.dart';
 import 'reader_types.dart';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Vertical reader view — virtual infinite scroll
-//
-// Uses CustomScrollView with a center key for true bidirectional scrolling.
-// Two SliverList.builder instances grow from the anchor in opposite
-// directions, mapping virtual indices → chapter paragraphs via ChapterStore.
-//
-// Architecture:
-//
-//   CustomScrollView(center: _centerKey)
-//     ├─ [reverse] SliverList.builder  — paragraphs from earlier chapters
-//     ├─ [center]  empty anchor        — stable key, scroll offset 0
-//     └─ [forward] SliverList.builder  — paragraphs from active + later chapters
-//
-// No scroll offset correction is ever needed — the anchor is stable and
-// chapters simply grow outward in both directions.
-// ─────────────────────────────────────────────────────────────────────────────
 
 class VerticalReaderView extends StatefulWidget {
   const VerticalReaderView({
     super.key,
-    required this.store,
-    required this.activeChapterSeq,
+    required this.centerChapterId,
+    this.prevChapterId,
+    this.nextChapterId,
+    required this.prevSlot,
+    required this.centerSlot,
+    required this.nextSlot,
     required this.fontScale,
     required this.lineHeight,
     required this.contentPadding,
     required this.onPositionUpdate,
     required this.onRetry,
+    required this.isFirst,
+    required this.isLast,
     this.initialParagraphId = '',
     this.initialOffset = 0,
     this.onJumpRegistered,
     this.onParagraphLongPress,
     this.selectedChapterId,
     this.selectedParagraphId,
+    this.onChapterBoundary,
   });
 
-  final ChapterStore store;
-  final int activeChapterSeq;
+  final String centerChapterId;
+  final String? prevChapterId;
+  final String? nextChapterId;
+  final ValueNotifier<ChapterLoadState> prevSlot;
+  final ValueNotifier<ChapterLoadState> centerSlot;
+  final ValueNotifier<ChapterLoadState> nextSlot;
   final double fontScale;
   final double lineHeight;
   final EdgeInsets contentPadding;
   final void Function(String chapterId, String paragraphId, double offset)
       onPositionUpdate;
   final void Function(String chapterId) onRetry;
+  final bool isFirst;
+  final bool isLast;
   final String initialParagraphId;
   final double initialOffset;
   final ValueChanged<void Function(String, double)>? onJumpRegistered;
@@ -64,66 +59,97 @@ class VerticalReaderView extends StatefulWidget {
   )? onParagraphLongPress;
   final String? selectedChapterId;
   final String? selectedParagraphId;
+  final void Function(int direction)? onChapterBoundary;
 
   @override
   State<VerticalReaderView> createState() => _VerticalReaderViewState();
 }
 
 class _VerticalReaderViewState extends State<VerticalReaderView> {
+  static const _chapterGap = 48.0;
+
   late ScrollController _scrollController;
   final GlobalKey _centerKey = GlobalKey();
-  final GlobalKey _scrollViewKey = GlobalKey();
+  final GlobalKey _prevSliverKey = GlobalKey();
+  final GlobalKey _centerSliverKey = GlobalKey();
+  final GlobalKey _nextSliverKey = GlobalKey();
 
   bool _jumpInProgress = false;
+  String _reportedChapterId = '';
+
   String _scrollTargetParagraphId = '';
   final GlobalKey _jumpTargetKey = GlobalKey();
   int _ensureRetries = 0;
   static const _maxEnsureRetries = 10;
 
-  static const _chapterGap = 48.0;
-
-  final Map<int, GlobalKey> _chapterKeys = {};
-
-  GlobalKey _chapterKey(int seq) {
-    return _chapterKeys.putIfAbsent(seq, () => GlobalKey());
-  }
-
-  List<_ResolvedItem> _forwardItems = [];
-  List<_ResolvedItem> _reverseItems = [];
-
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController();
-    widget.onJumpRegistered?.call(jumpTo);
-    widget.store.addListener(_onStoreChanged);
-
-    _rebuildItems();
+    _reportedChapterId = widget.centerChapterId;
+    widget.onJumpRegistered?.call(_jumpToPosition);
     _scheduleInitialScroll();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
   void didUpdateWidget(covariant VerticalReaderView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.store != widget.store) {
-      oldWidget.store.removeListener(_onStoreChanged);
-      widget.store.addListener(_onStoreChanged);
+    if (oldWidget.centerChapterId != widget.centerChapterId) {
+      _reportedChapterId = widget.centerChapterId;
+      _jumpInProgress = true;
+
+      final oldOffset =
+          _scrollController.hasClients ? _scrollController.offset : 0.0;
+      final oldCenterExt = _sliverExtent(_centerSliverKey);
+      final oldPrevExt = _sliverExtent(_prevSliverKey);
+      final wasForward = oldWidget.nextChapterId == widget.centerChapterId;
+      final wasBackward = oldWidget.prevChapterId == widget.centerChapterId;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) {
+          _jumpInProgress = false;
+          return;
+        }
+
+        final double delta;
+        if (wasForward) {
+          delta = -(oldCenterExt + _chapterGap);
+        } else if (wasBackward) {
+          delta = oldPrevExt + _chapterGap;
+        } else {
+          _scrollController.jumpTo(0);
+          _jumpInProgress = false;
+          return;
+        }
+
+        final target = oldOffset + delta;
+        final pos = _scrollController.position;
+        _scrollController
+            .jumpTo(target.clamp(pos.minScrollExtent, pos.maxScrollExtent));
+        _jumpInProgress = false;
+      });
     }
-    _rebuildItems();
   }
 
-  @override
-  void dispose() {
-    widget.store.removeListener(_onStoreChanged);
-    _scrollController.dispose();
-    super.dispose();
+  // ─ Sliver extent helper ───────────────────────────────────────────────
+
+  double _sliverExtent(GlobalKey key) {
+    final ctx = key.currentContext;
+    if (ctx == null) return 0;
+    final renderObject = ctx.findRenderObject();
+    if (renderObject is RenderSliver) {
+      return renderObject.geometry?.scrollExtent ?? 0;
+    }
+    return 0;
   }
 
-  void _onStoreChanged() {
-    if (!mounted) return;
-    _rebuildItems();
-    setState(() {});
-  }
+  // ─ Initial scroll ─────────────────────────────────────────────────────
 
   void _scheduleInitialScroll() {
     if (widget.initialParagraphId.isNotEmpty) {
@@ -150,11 +176,7 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
     if (!mounted || !_scrollController.hasClients) return;
     final ctx = _jumpTargetKey.currentContext;
     if (ctx != null) {
-      Scrollable.ensureVisible(
-        ctx,
-        alignment: 0.0,
-        duration: Duration.zero,
-      );
+      Scrollable.ensureVisible(ctx, alignment: 0.0, duration: Duration.zero);
       setState(() => _scrollTargetParagraphId = '');
       _jumpInProgress = false;
       _ensureRetries = 0;
@@ -168,28 +190,12 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
       return;
     }
 
-    // Estimate scroll position to bring the target into the builder's range.
-    final paras = widget.store.paragraphsAt(widget.activeChapterSeq);
-    if (paras != null && paras.isNotEmpty && _scrollTargetParagraphId.isNotEmpty) {
-      // Find the index of the target paragraph by ID
-      int targetIdx = paras.indexWhere((p) => p.id.toStringValue() == _scrollTargetParagraphId);
-      if (targetIdx >= 0) {
-        final vpHeight = _scrollController.position.viewportDimension;
-        final estimatedItemHeight = vpHeight / 4;
-        final target = targetIdx * estimatedItemHeight;
-        _scrollController.jumpTo(target.clamp(
-          _scrollController.position.minScrollExtent,
-          _scrollController.position.maxScrollExtent,
-        ));
-      }
-    }
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensureTargetVisible();
     });
   }
 
-  void jumpTo(String paragraphId, double offset) {
+  void _jumpToPosition(String paragraphId, double offset) {
     _jumpInProgress = true;
     _ensureRetries = 0;
     if (paragraphId.isEmpty) {
@@ -200,117 +206,24 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
       return;
     }
     _scrollTargetParagraphId = paragraphId;
-    _rebuildItems();
     setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensureTargetVisible();
     });
   }
 
-  // ─ Precompute item lists ──────────────────────────────────────────────
-
-  void _rebuildItems() {
-    _forwardItems = _buildForwardItems();
-    _reverseItems = _buildReverseItems();
-
-    final activeSeqs = <int>{};
-    for (final item in _forwardItems) {
-      if (item.kind == _ResolvedItemKind.paragraph && item.localIndex == 0) {
-        activeSeqs.add(item.chapterSeq!);
-      }
-    }
-    for (final item in _reverseItems) {
-      if (item.kind == _ResolvedItemKind.paragraph && item.localIndex == 0) {
-        activeSeqs.add(item.chapterSeq!);
-      }
-    }
-    _chapterKeys.removeWhere((seq, _) => !activeSeqs.contains(seq));
-  }
-
-  static const _loadRadius = 2;
-
-  List<_ResolvedItem> _buildForwardItems() {
-    final store = widget.store;
-    final items = <_ResolvedItem>[];
-    int? seq = widget.activeChapterSeq;
-
-    while (seq != null && seq <= store.maxSeq) {
-      final state = store.stateAt(seq);
-
-      if (state is ChapterLoadError) {
-        items.add(_ResolvedItem.error(seq, state.message));
-        return items;
-      }
-
-      final paras = store.paragraphsAt(seq);
-      if (paras == null) {
-        if (store.chapterDistance(seq, store.activeSeq) <= _loadRadius) {
-          store.ensureLoaded(seq);
-        }
-        items.add(_ResolvedItem.loading(seq));
-        return items;
-      }
-
-      final chapterId = store.idAt(seq)!;
-      for (int i = 0; i < paras.length; i++) {
-        items.add(_ResolvedItem.paragraph(seq, i, paras[i], chapterId));
-      }
-
-      final next = store.nextSeq(seq);
-      if (next != null) {
-        items.add(_ResolvedItem.gap());
-      }
-
-      seq = next;
-    }
-
-    items.add(_ResolvedItem.endOfBook());
-    return items;
-  }
-
-  List<_ResolvedItem> _buildReverseItems() {
-    final store = widget.store;
-    final items = <_ResolvedItem>[];
-    int? seq = store.prevSeq(widget.activeChapterSeq);
-
-    if (seq == null) return items;
-
-    while (seq != null) {
-      items.add(_ResolvedItem.gap());
-
-      final state = store.stateAt(seq);
-      if (state is ChapterLoadError) {
-        items.add(_ResolvedItem.error(seq, state.message));
-        return items;
-      }
-
-      final paras = store.paragraphsAt(seq);
-      if (paras == null) {
-        if (store.chapterDistance(seq, store.activeSeq) <= _loadRadius) {
-          store.ensureLoaded(seq);
-        }
-        items.add(_ResolvedItem.loading(seq));
-        return items;
-      }
-
-      final chapterId = store.idAt(seq)!;
-      for (int i = paras.length - 1; i >= 0; i--) {
-        items.add(_ResolvedItem.paragraph(seq, i, paras[i], chapterId));
-      }
-
-      seq = store.prevSeq(seq);
-    }
-
-    return items;
-  }
-
-  // ─ Scroll notifications & position tracking ───────────────────────────
+  // ─ Scroll notifications ───────────────────────────────────────────────
 
   bool _onScrollNotification(ScrollNotification n) {
     if (_jumpInProgress || !_scrollController.hasClients) return false;
 
-    if (n is ScrollUpdateNotification || n is ScrollEndNotification) {
+    if (n is ScrollUpdateNotification) {
       _reportPosition();
+    }
+
+    if (n is ScrollEndNotification) {
+      _reportPosition();
+      _detectChapter();
     }
 
     return false;
@@ -318,138 +231,56 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
 
   void _reportPosition() {
     if (!_scrollController.hasClients) return;
-
     final offset = _scrollController.offset;
-    final vpHeight = _scrollController.position.viewportDimension;
+    final centerExt = _sliverExtent(_centerSliverKey);
 
-    final store = widget.store;
+    if (centerExt <= 0) return;
 
-    final chapterSeqs = <int>{};
-    for (final item in _forwardItems) {
-      if (item.kind == _ResolvedItemKind.paragraph && item.localIndex == 0) {
-        chapterSeqs.add(item.chapterSeq!);
-      }
-    }
-    for (final item in _reverseItems) {
-      if (item.kind == _ResolvedItemKind.paragraph && item.localIndex == 0) {
-        chapterSeqs.add(item.chapterSeq!);
-      }
-    }
+    final centerState = widget.centerSlot.value;
+    if (centerState is! ChapterLoaded) return;
+    final paragraphs = centerState.paragraphs;
+    if (paragraphs.isEmpty) return;
 
-    if (chapterSeqs.isEmpty) {
-      _reportFallback(store, offset);
-      return;
-    }
+    // offset is relative to center anchor: 0 = top of center sliver
+    // Only report when viewport is within center chapter range
+    if (offset < 0 || offset > centerExt) return;
 
-    final scrollContext = _scrollViewKey.currentContext;
-    if (scrollContext == null) {
-      _reportFallback(store, offset);
-      return;
-    }
-    final scrollBox = scrollContext.findRenderObject();
-    if (scrollBox is! RenderBox || !scrollBox.attached) {
-      _reportFallback(store, offset);
-      return;
-    }
-
-    final vpTopGlobal = scrollBox.localToGlobal(Offset.zero).dy;
-    final vpCenterGlobal = vpTopGlobal + vpHeight / 2;
-
-    int? bestSeq;
-    double bestY = double.negativeInfinity;
-
-    for (final seq in chapterSeqs) {
-      final key = _chapterKeys[seq];
-      if (key == null) continue;
-      final ctx = key.currentContext;
-      if (ctx == null) continue;
-      final box = ctx.findRenderObject();
-      if (box is! RenderBox || !box.attached) continue;
-
-      final topGlobal = box.localToGlobal(Offset.zero).dy;
-
-      if (topGlobal <= vpCenterGlobal && topGlobal > bestY) {
-        bestY = topGlobal;
-        bestSeq = seq;
-      }
-    }
-
-    if (bestSeq == null) {
-      double closest = double.infinity;
-      for (final seq in chapterSeqs) {
-        final key = _chapterKeys[seq];
-        if (key == null) continue;
-        final ctx = key.currentContext;
-        if (ctx == null) continue;
-        final box = ctx.findRenderObject();
-        if (box is! RenderBox || !box.attached) continue;
-        final topGlobal = box.localToGlobal(Offset.zero).dy;
-        final dist = (topGlobal - vpCenterGlobal).abs();
-        if (dist < closest) {
-          closest = dist;
-          bestSeq = seq;
-        }
-      }
-    }
-
-    if (bestSeq == null) {
-      _reportFallback(store, offset);
-      return;
-    }
-
-    final chapterId = store.idAt(bestSeq);
-    if (chapterId == null) {
-      _reportFallback(store, offset);
-      return;
-    }
-
-    final paras = store.paragraphsAt(bestSeq);
-    String paragraphId = '';
-    if (paras != null && paras.isNotEmpty) {
-      int paraIdx = 0;
-      final chapterKey = _chapterKeys[bestSeq];
-      if (chapterKey != null) {
-        final ctx = chapterKey.currentContext;
-        if (ctx != null) {
-          final box = ctx.findRenderObject();
-          if (box is RenderBox && box.attached) {
-            final chapterTopGlobal = box.localToGlobal(Offset.zero).dy;
-            final distPastStart = vpCenterGlobal - chapterTopGlobal;
-
-            final nextSeq = store.nextSeq(bestSeq);
-            double chapterHeight = vpHeight;
-            if (nextSeq != null) {
-              final nextKey = _chapterKeys[nextSeq];
-              if (nextKey != null) {
-                final nextCtx = nextKey.currentContext;
-                if (nextCtx != null) {
-                  final nextBox = nextCtx.findRenderObject();
-                  if (nextBox is RenderBox && nextBox.attached) {
-                    chapterHeight = nextBox.localToGlobal(Offset.zero).dy -
-                        chapterTopGlobal -
-                        _chapterGap;
-                    if (chapterHeight <= 0) chapterHeight = vpHeight;
-                  }
-                }
-              }
-            }
-
-            final ratio = (distPastStart / chapterHeight).clamp(0.0, 1.0);
-            paraIdx = (ratio * paras.length).floor().clamp(0, paras.length - 1);
-          }
-        }
-      }
-      paragraphId = paras[paraIdx].id.toStringValue();
-    }
-
-    store.setActive(bestSeq);
-    widget.onPositionUpdate(chapterId, paragraphId, offset);
+    final ratio = (offset / centerExt).clamp(0.0, 1.0);
+    final paraIdx =
+        (ratio * paragraphs.length).floor().clamp(0, paragraphs.length - 1);
+    widget.onPositionUpdate(
+      widget.centerChapterId,
+      paragraphs[paraIdx].id.toStringValue(),
+      offset,
+    );
   }
 
-  void _reportFallback(ChapterStore store, double offset) {
-    final fallbackId = store.idAt(widget.activeChapterSeq);
-    if (fallbackId != null) {
-      widget.onPositionUpdate(fallbackId, '', offset);
+  void _detectChapter() {
+    if (!_scrollController.hasClients) return;
+
+    final vpHeight = _scrollController.position.viewportDimension;
+    final vpCenter = _scrollController.offset + vpHeight / 2;
+    final centerExt = _sliverExtent(_centerSliverKey);
+
+    if (vpCenter >= 0 && vpCenter < centerExt) {
+      _reportedChapterId = widget.centerChapterId;
+      return;
+    }
+
+    if (vpCenter >= centerExt + _chapterGap && widget.nextChapterId != null) {
+      if (_reportedChapterId != widget.nextChapterId) {
+        _reportedChapterId = widget.nextChapterId!;
+        widget.onChapterBoundary?.call(1);
+      }
+      return;
+    }
+
+    if (vpCenter < 0 && widget.prevChapterId != null) {
+      if (_reportedChapterId != widget.prevChapterId) {
+        _reportedChapterId = widget.prevChapterId!;
+        widget.onChapterBoundary?.call(-1);
+      }
+      return;
     }
   }
 
@@ -460,92 +291,106 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
     return NotificationListener<ScrollNotification>(
       onNotification: _onScrollNotification,
       child: CustomScrollView(
-        key: _scrollViewKey,
         center: _centerKey,
         controller: _scrollController,
         slivers: [
-          // ── Reverse sliver (earlier chapters) ──
-          SliverList.builder(
-            itemCount: _reverseItems.length,
-            itemBuilder: (context, index) {
-              return _buildResolvedItem(_reverseItems[index]);
-            },
-          ),
-
-          // ── Center anchor (empty, stable key) ──
+          if (widget.prevChapterId != null)
+            ValueListenableBuilder<ChapterLoadState>(
+              valueListenable: widget.prevSlot,
+              builder: (_, state, _) => _buildSliver(
+                state,
+                isReversed: true,
+                sliverKey: _prevSliverKey,
+              ),
+            ),
+          if (widget.prevChapterId != null)
+            const SliverToBoxAdapter(
+                child: SizedBox(height: _chapterGap)),
           SliverToBoxAdapter(
-            key: _centerKey,
-            child: const SizedBox.shrink(),
+              key: _centerKey, child: const SizedBox.shrink()),
+          ValueListenableBuilder<ChapterLoadState>(
+            valueListenable: widget.centerSlot,
+            builder: (_, state, _) => _buildSliver(
+              state,
+              chapterId: widget.centerChapterId,
+              sliverKey: _centerSliverKey,
+            ),
           ),
-
-          // ── Forward sliver (active + later chapters) ──
-          SliverList.builder(
-            itemCount: _forwardItems.length,
-            itemBuilder: (context, index) {
-              return _buildResolvedItem(_forwardItems[index]);
-            },
-          ),
+          if (widget.nextChapterId != null)
+            const SliverToBoxAdapter(
+                child: SizedBox(height: _chapterGap)),
+          if (widget.nextChapterId != null)
+            ValueListenableBuilder<ChapterLoadState>(
+              valueListenable: widget.nextSlot,
+              builder: (_, state, _) => _buildSliver(
+                state,
+                sliverKey: _nextSliverKey,
+              ),
+            ),
+          if (widget.isLast)
+            SliverToBoxAdapter(child: _buildEndOfBook(context)),
         ],
       ),
     );
   }
 
-  Widget _buildResolvedItem(_ResolvedItem item) {
-    return switch (item.kind) {
-      _ResolvedItemKind.paragraph => _buildParagraph(item),
-      _ResolvedItemKind.gap => const SizedBox(height: _chapterGap),
-      _ResolvedItemKind.loading => _buildLoading(item),
-      _ResolvedItemKind.error => SizedBox(
-          height: 300,
-          child: ChapterStatusBlock(
-            kind: ChapterStatusBlockKind.error,
-            message: item.errorMessage,
-            onRetry: () {
-              final chapterId = widget.store.idAt(item.chapterSeq!);
-              if (chapterId != null) widget.onRetry(chapterId);
-            },
+  Widget _buildSliver(
+    ChapterLoadState state, {
+    bool isReversed = false,
+    String? chapterId,
+    GlobalKey? sliverKey,
+  }) {
+    return switch (state) {
+      ChapterIdle() =>
+        SliverToBoxAdapter(key: sliverKey, child: const SizedBox.shrink()),
+      ChapterLoading() => SliverToBoxAdapter(
+          key: sliverKey,
+          child: const SizedBox(
+            height: 200,
+            child: Center(child: CircularProgressIndicator()),
           ),
         ),
-      _ResolvedItemKind.endOfBook => _buildEndOfBook(context),
+      ChapterLoadError(:final message) => SliverToBoxAdapter(
+          key: sliverKey,
+          child: SizedBox(
+            height: 300,
+            child: ChapterStatusBlock(
+              kind: ChapterStatusBlockKind.error,
+              message: message,
+              onRetry: chapterId != null
+                  ? () => widget.onRetry(chapterId)
+                  : null,
+            ),
+          ),
+        ),
+      ChapterLoaded(:final paragraphs) => SliverList.builder(
+          key: sliverKey,
+          itemCount: paragraphs.length,
+          itemBuilder: (_, i) {
+            final idx = isReversed ? paragraphs.length - 1 - i : i;
+            return _buildParagraph(
+              paragraphs[idx],
+              idx,
+              chapterId ?? widget.centerChapterId,
+            );
+          },
+        ),
     };
   }
 
-  Widget _buildLoading(_ResolvedItem item) {
-    return const SizedBox(
-      height: 200,
-      child: Center(child: CircularProgressIndicator()),
-    );
-  }
-
-  Widget _buildParagraph(_ResolvedItem item) {
-    final chapterId = item.chapterId!;
-    final localIdx = item.localIndex!;
-    final paragraph = item.paragraph!;
-    final seq = item.chapterSeq!;
+  Widget _buildParagraph(
+      ParagraphContent paragraph, int paraIndex, String chapterId) {
     final paragraphId = paragraph.id.toStringValue();
-
     final isSelected = widget.selectedChapterId == chapterId &&
         widget.selectedParagraphId == paragraphId;
-
-    final isJumpTarget =
-        chapterId == widget.store.idAt(widget.activeChapterSeq) &&
-            paragraphId == _scrollTargetParagraphId;
-
-    Key? widgetKey;
-    if (isJumpTarget) {
-      widgetKey = _jumpTargetKey;
-    } else if (localIdx == 0) {
-      widgetKey = _chapterKey(seq);
-    }
+    final isJumpTarget = paragraphId == _scrollTargetParagraphId;
 
     return Padding(
-      key: widgetKey,
+      key: isJumpTarget ? _jumpTargetKey : null,
       padding: EdgeInsets.only(
         left: widget.contentPadding.left,
         right: widget.contentPadding.right,
-        top: seq == widget.activeChapterSeq && localIdx == 0
-            ? widget.contentPadding.top
-            : 0,
+        top: paraIndex == 0 ? widget.contentPadding.top : 0,
         bottom: LanghuanTheme.spaceMd,
       ),
       child: ParagraphView(
@@ -575,61 +420,4 @@ class _VerticalReaderViewState extends State<VerticalReaderView> {
       ),
     );
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Resolved item — internal type for the virtual index → widget mapping
-// ─────────────────────────────────────────────────────────────────────────────
-
-enum _ResolvedItemKind { paragraph, gap, loading, error, endOfBook }
-
-class _ResolvedItem {
-  _ResolvedItem._({
-    required this.kind,
-    this.chapterSeq,
-    this.localIndex,
-    this.paragraph,
-    this.chapterId,
-    this.errorMessage,
-  });
-
-  factory _ResolvedItem.paragraph(
-    int seq,
-    int localIndex,
-    ParagraphContent paragraph,
-    String chapterId,
-  ) =>
-      _ResolvedItem._(
-        kind: _ResolvedItemKind.paragraph,
-        chapterSeq: seq,
-        localIndex: localIndex,
-        paragraph: paragraph,
-        chapterId: chapterId,
-      );
-
-  factory _ResolvedItem.gap() => _ResolvedItem._(
-        kind: _ResolvedItemKind.gap,
-      );
-
-  factory _ResolvedItem.loading(int seq) => _ResolvedItem._(
-        kind: _ResolvedItemKind.loading,
-        chapterSeq: seq,
-      );
-
-  factory _ResolvedItem.error(int seq, String message) => _ResolvedItem._(
-        kind: _ResolvedItemKind.error,
-        chapterSeq: seq,
-        errorMessage: message,
-      );
-
-  factory _ResolvedItem.endOfBook() => _ResolvedItem._(
-        kind: _ResolvedItemKind.endOfBook,
-      );
-
-  final _ResolvedItemKind kind;
-  final int? chapterSeq;
-  final int? localIndex;
-  final ParagraphContent? paragraph;
-  final String? chapterId;
-  final String? errorMessage;
 }
