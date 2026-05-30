@@ -9,6 +9,9 @@ class ParagraphView extends StatelessWidget {
     super.key,
     required this.paragraph,
     this.fontScale = 1.0,
+    this.fontFamily,
+    this.letterSpacing = 0.0,
+    this.paragraphSpacing = LanghuanTheme.spaceMd,
     this.lineHeight = 1.8,
     this.selected = false,
     this.onLongPress,
@@ -16,6 +19,9 @@ class ParagraphView extends StatelessWidget {
 
   final ParagraphContent paragraph;
   final double fontScale;
+  final String? fontFamily;
+  final double letterSpacing;
+  final double paragraphSpacing;
   final double lineHeight;
   final bool selected;
   final void Function(Rect globalRect)? onLongPress;
@@ -30,6 +36,8 @@ class ParagraphView extends StatelessWidget {
           style: theme.textTheme.headlineSmall?.copyWith(
             fontSize:
                 (theme.textTheme.headlineSmall?.fontSize ?? 24) * fontScale,
+            fontFamily: fontFamily,
+            letterSpacing: letterSpacing,
           ),
           textAlign: TextAlign.center,
         ),
@@ -38,6 +46,8 @@ class ParagraphView extends StatelessWidget {
           style: theme.textTheme.bodyLarge?.copyWith(
             fontSize:
                 (theme.textTheme.bodyLarge?.fontSize ?? 16) * fontScale,
+            fontFamily: fontFamily,
+            letterSpacing: letterSpacing,
             height: lineHeight,
           ),
         ),
@@ -71,7 +81,7 @@ class ParagraphView extends StatelessWidget {
                 ),
                 if (alt != null && alt.isNotEmpty)
                   Padding(
-                    padding: const EdgeInsets.only(top: LanghuanTheme.spaceSm),
+                    padding: EdgeInsets.only(top: paragraphSpacing.clamp(4.0, 32.0)),
                     child: Text(
                       alt,
                       style: theme.textTheme.labelMedium?.copyWith(

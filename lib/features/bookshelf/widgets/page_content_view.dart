@@ -11,6 +11,9 @@ class PageContentView extends StatelessWidget {
     super.key,
     required this.page,
     this.fontScale = 1.0,
+    this.fontFamily,
+    this.letterSpacing = 0.0,
+    this.paragraphSpacing = LanghuanTheme.spaceMd,
     this.lineHeight = 1.8,
     this.selectedParagraphId,
     this.onParagraphLongPress,
@@ -18,6 +21,9 @@ class PageContentView extends StatelessWidget {
 
   final PageContent page;
   final double fontScale;
+  final String? fontFamily;
+  final double letterSpacing;
+  final double paragraphSpacing;
   final double lineHeight;
   final String? selectedParagraphId;
   final void Function(String paragraphId, ParagraphContent paragraph, Rect globalRect)? onParagraphLongPress;
@@ -33,12 +39,7 @@ class PageContentView extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (int i = 0; i < items.length; i++) ...[
-            if (i > 0)
-              SizedBox(
-                height: items[i].source is ParagraphContent_Image
-                    ? LanghuanTheme.spaceLg
-                    : LanghuanTheme.spaceMd,
-              ),
+            if (i > 0) SizedBox(height: paragraphSpacing),
             _buildItem(context, theme, items[i]),
           ],
         ],
@@ -82,6 +83,8 @@ class PageContentView extends StatelessWidget {
         style: theme.textTheme.headlineSmall?.copyWith(
           fontSize:
               (theme.textTheme.headlineSmall?.fontSize ?? 24) * fontScale,
+          fontFamily: fontFamily,
+          letterSpacing: letterSpacing,
         ),
         textAlign: TextAlign.center,
       );
@@ -93,6 +96,8 @@ class PageContentView extends StatelessWidget {
         text,
         style: theme.textTheme.bodyLarge?.copyWith(
           fontSize: (theme.textTheme.bodyLarge?.fontSize ?? 16) * fontScale,
+          fontFamily: fontFamily,
+          letterSpacing: letterSpacing,
           height: lineHeight,
         ),
       );

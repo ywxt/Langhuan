@@ -18,6 +18,9 @@ class ChapterContentManager extends StatefulWidget {
     required this.chapters,
     required this.controller,
     required this.fontScale,
+    this.fontFamily,
+    this.letterSpacing = 0.0,
+    this.paragraphSpacing = LanghuanTheme.spaceMd,
     required this.lineHeight,
     required this.contentPadding,
     required this.chineseConversion,
@@ -31,6 +34,9 @@ class ChapterContentManager extends StatefulWidget {
   final List<ChapterInfoModel> chapters;
   final ReaderController controller;
   final double fontScale;
+  final String? fontFamily;
+  final double letterSpacing;
+  final double paragraphSpacing;
   final double lineHeight;
   final EdgeInsets contentPadding;
   final ChineseConversionMode chineseConversion;
@@ -174,11 +180,18 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
     }
 
     if (oldWidget.fontScale != widget.fontScale ||
+        oldWidget.fontFamily != widget.fontFamily ||
+        oldWidget.letterSpacing != widget.letterSpacing ||
+        oldWidget.paragraphSpacing != widget.paragraphSpacing ||
         oldWidget.lineHeight != widget.lineHeight) {
       _pendingJumpParagraphId = _lastReportedParagraphId;
       _pendingFromEnd = false;
       _breaker = null;
       _lastPageSize = Size.zero;
+      _hCenterPages = [];
+      _hPrevPages = [];
+      _hNextPages = [];
+      _currentPageIndex = 0;
       setState(() {});
     }
   }
@@ -450,11 +463,15 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
     final theme = Theme.of(context);
     final bodyLarge = theme.textTheme.bodyLarge?.copyWith(
       fontSize: (theme.textTheme.bodyLarge?.fontSize ?? 16) * widget.fontScale,
+      fontFamily: widget.fontFamily,
+      letterSpacing: widget.letterSpacing,
       height: widget.lineHeight,
     );
     final headlineSmall = theme.textTheme.headlineSmall?.copyWith(
       fontSize:
           (theme.textTheme.headlineSmall?.fontSize ?? 24) * widget.fontScale,
+      fontFamily: widget.fontFamily,
+      letterSpacing: widget.letterSpacing,
     );
     final size = MediaQuery.sizeOf(context);
     final pageSize = Size(
@@ -465,7 +482,7 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
       pageSize: pageSize,
       textStyle: bodyLarge ?? const TextStyle(),
       titleStyle: headlineSmall ?? const TextStyle(),
-      paragraphSpacing: LanghuanTheme.spaceMd,
+      paragraphSpacing: widget.paragraphSpacing,
       imageHeight: pageSize.width * 9 / 16,
       textDirection: Directionality.of(context),
     );
@@ -595,6 +612,9 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
               (_hCenterPages.isEmpty ? 0 : _hCenterPages.length - 1) &&
           _isLast,
       fontScale: widget.fontScale,
+        fontFamily: widget.fontFamily,
+        letterSpacing: widget.letterSpacing,
+        paragraphSpacing: widget.paragraphSpacing,
       lineHeight: widget.lineHeight,
       contentPadding: widget.contentPadding,
       onNextPage: _onHorizontalNextPage,

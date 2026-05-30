@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../../../l10n/app_localizations.dart';
 import '../../../shared/theme/app_theme.dart';
@@ -11,6 +12,7 @@ import '../reading_progress_provider.dart';
 
 Future<void> showReaderInterfaceSheet(BuildContext context) async {
   final l10n = AppLocalizations.of(context);
+
   await showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
@@ -47,6 +49,54 @@ Future<void> showReaderInterfaceSheet(BuildContext context) async {
                     ],
                   ),
                   const SizedBox(height: LanghuanTheme.spaceMd),
+                  Text('Font File'),
+                  const SizedBox(height: LanghuanTheme.spaceSm),
+                  Text(
+                    settings.customFontDisplayName ?? 'System Default',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: LanghuanTheme.spaceSm),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () async {
+                            final result = await FilePicker.pickFiles(
+                              type: FileType.custom,
+                              allowedExtensions: const ['ttf', 'otf'],
+                            );
+                            final path = result?.files.single.path;
+                            if (path == null || path.isEmpty) return;
+
+                            try {
+                              await notifier.loadFontFromFile(path);
+                              if (context.mounted) {
+                                setModalState(() {});
+                              }
+                            } catch (_) {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Failed to load font file'),
+                                ),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.upload_file),
+                          label: const Text('Choose Font File'),
+                        ),
+                      ),
+                      const SizedBox(width: LanghuanTheme.spaceSm),
+                      OutlinedButton(
+                        onPressed: () {
+                          notifier.clearCustomFont();
+                          setModalState(() {});
+                        },
+                        child: const Text('Reset'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: LanghuanTheme.spaceMd),
                   Text('Font ${settings.fontScale.toStringAsFixed(2)}x'),
                   Slider(
                     value: settings.fontScale,
@@ -55,6 +105,34 @@ Future<void> showReaderInterfaceSheet(BuildContext context) async {
                     divisions: 10,
                     onChanged: (v) {
                       notifier.setFontScale(v);
+                      setModalState(() {});
+                    },
+                  ),
+                  const SizedBox(height: LanghuanTheme.spaceSm),
+                  Text(
+                    'Letter Spacing ${settings.letterSpacing.toStringAsFixed(2)}',
+                  ),
+                  Slider(
+                    value: settings.letterSpacing,
+                    min: 0,
+                    max: 4,
+                    divisions: 16,
+                    onChanged: (v) {
+                      notifier.setLetterSpacing(v);
+                      setModalState(() {});
+                    },
+                  ),
+                  const SizedBox(height: LanghuanTheme.spaceSm),
+                  Text(
+                    'Paragraph Spacing ${settings.paragraphSpacing.toStringAsFixed(0)}',
+                  ),
+                  Slider(
+                    value: settings.paragraphSpacing,
+                    min: 4,
+                    max: 32,
+                    divisions: 14,
+                    onChanged: (v) {
+                      notifier.setParagraphSpacing(v);
                       setModalState(() {});
                     },
                   ),

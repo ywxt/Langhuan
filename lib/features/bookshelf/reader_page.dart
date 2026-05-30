@@ -188,6 +188,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                       chapters: _screenController.chapters,
                       controller: _readerController,
                       fontScale: settings.fontScale,
+                      fontFamily: settings.fontFamily,
+                      letterSpacing: settings.letterSpacing,
+                      paragraphSpacing: settings.paragraphSpacing,
                       lineHeight: settings.lineHeight,
                       chineseConversion: settings.chineseConversion,
                       contentPadding: EdgeInsets.fromLTRB(

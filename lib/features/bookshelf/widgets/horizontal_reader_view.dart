@@ -15,6 +15,9 @@ class HorizontalReaderView extends StatefulWidget {
     required this.isFirstPage,
     required this.isLastPage,
     required this.fontScale,
+    this.fontFamily,
+    this.letterSpacing = 0.0,
+    this.paragraphSpacing = 16.0,
     required this.lineHeight,
     required this.contentPadding,
     required this.onNextPage,
@@ -35,6 +38,9 @@ class HorizontalReaderView extends StatefulWidget {
   final bool isFirstPage;
   final bool isLastPage;
   final double fontScale;
+  final String? fontFamily;
+  final double letterSpacing;
+  final double paragraphSpacing;
   final double lineHeight;
   final EdgeInsets contentPadding;
   final VoidCallback onNextPage;
@@ -296,6 +302,9 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView>
       child: PageContentView(
         page: _snapCurrent!,
         fontScale: widget.fontScale,
+        fontFamily: widget.fontFamily,
+        letterSpacing: widget.letterSpacing,
+        paragraphSpacing: widget.paragraphSpacing,
         lineHeight: widget.lineHeight,
         selectedParagraphId: isSelectedChapter
             ? widget.selectedParagraphId
@@ -344,6 +353,9 @@ class _HorizontalReaderViewState extends State<HorizontalReaderView>
       child: PageContentView(
         page: page,
         fontScale: widget.fontScale,
+        fontFamily: widget.fontFamily,
+        letterSpacing: widget.letterSpacing,
+        paragraphSpacing: widget.paragraphSpacing,
         lineHeight: widget.lineHeight,
       ),
     );

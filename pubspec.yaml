@@ -48,6 +48,7 @@ dependencies:
   intl: any
   freezed_annotation: ^3.1.0
   fluttertoast: ^9.0.0
+  shared_preferences: ^2.5.3
 
 dev_dependencies:
   flutter_test:
