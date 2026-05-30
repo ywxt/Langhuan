@@ -4,34 +4,28 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../src/rust/api/conversion.dart' as rust_conversion;
 import '../../src/rust/api/types.dart' show ChineseConversionMode;
 
-enum ReaderMode { verticalScroll, horizontalPaging }
-
 enum ReaderThemeMode { system, light, dark, sepia }
 
 class ReaderSettingsState {
   const ReaderSettingsState({
-    this.mode = ReaderMode.verticalScroll,
     this.fontScale = 1.0,
     this.lineHeight = 1.8,
     this.themeMode = ReaderThemeMode.system,
     this.chineseConversion = ChineseConversionMode.none,
   });
 
-  final ReaderMode mode;
   final double fontScale;
   final double lineHeight;
   final ReaderThemeMode themeMode;
   final ChineseConversionMode chineseConversion;
 
   ReaderSettingsState copyWith({
-    ReaderMode? mode,
     double? fontScale,
     double? lineHeight,
     ReaderThemeMode? themeMode,
     ChineseConversionMode? chineseConversion,
   }) {
     return ReaderSettingsState(
-      mode: mode ?? this.mode,
       fontScale: fontScale ?? this.fontScale,
       lineHeight: lineHeight ?? this.lineHeight,
       themeMode: themeMode ?? this.themeMode,
@@ -43,10 +37,6 @@ class ReaderSettingsState {
 class ReaderSettingsNotifier extends Notifier<ReaderSettingsState> {
   @override
   ReaderSettingsState build() => const ReaderSettingsState();
-
-  void setMode(ReaderMode mode) {
-    state = state.copyWith(mode: mode);
-  }
 
   void setFontScale(double fontScale) {
     state = state.copyWith(fontScale: fontScale.clamp(0.8, 1.8));

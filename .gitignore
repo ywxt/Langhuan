@@ -52,3 +52,9 @@ app.*.map.json
 lib/src/rust/
 native/hub/src/frb_generated*
 frb_generated.h
+
+.claude/
+openspec/
+.github/prompts
+.github/skills
+

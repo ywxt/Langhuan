@@ -10,4 +10,3 @@ export 'reader_controller.dart';
 export 'reader_top_bar.dart';
 export 'reader_types.dart';
 export 'search_result_card.dart';
-export 'vertical_reader_view.dart';

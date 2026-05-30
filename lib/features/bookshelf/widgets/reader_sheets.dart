@@ -1,0 +1,256 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../l10n/app_localizations.dart';
+import '../../../shared/theme/app_theme.dart';
+import '../../../src/rust/api/types.dart';
+import '../../feeds/feed_service.dart';
+import '../bookmark_provider.dart';
+import '../reader_settings_provider.dart';
+import '../reading_progress_provider.dart';
+
+Future<void> showReaderInterfaceSheet(BuildContext context) async {
+  final l10n = AppLocalizations.of(context);
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => Consumer(
+      builder: (context, ref, _) {
+        final settings = ref.watch(readerSettingsProvider);
+        final notifier = ref.read(readerSettingsProvider.notifier);
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(LanghuanTheme.spaceLg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    l10n.readerInterface,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: LanghuanTheme.spaceMd),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.swap_horiz,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: LanghuanTheme.spaceSm),
+                      Text(
+                        l10n.readerModeHorizontal,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: LanghuanTheme.spaceMd),
+                  Text('Font ${settings.fontScale.toStringAsFixed(2)}x'),
+                  Slider(
+                    value: settings.fontScale,
+                    min: 0.8,
+                    max: 1.8,
+                    divisions: 10,
+                    onChanged: (v) {
+                      notifier.setFontScale(v);
+                      setModalState(() {});
+                    },
+                  ),
+                  const SizedBox(height: LanghuanTheme.spaceSm),
+                  Text('Line Height ${settings.lineHeight.toStringAsFixed(2)}'),
+                  Slider(
+                    value: settings.lineHeight,
+                    min: 1.2,
+                    max: 2.4,
+                    divisions: 12,
+                    onChanged: (v) {
+                      notifier.setLineHeight(v);
+                      setModalState(() {});
+                    },
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    ),
+  );
+}
+
+Future<void> showReaderSettingsSheet(BuildContext context) async {
+  final l10n = AppLocalizations.of(context);
+
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => Consumer(
+      builder: (context, ref, _) {
+        final settings = ref.watch(readerSettingsProvider);
+        final notifier = ref.read(readerSettingsProvider.notifier);
+
+        String conversionLabel(ChineseConversionMode mode) {
+          return switch (mode) {
+            ChineseConversionMode.none => l10n.chineseConversionNone,
+            ChineseConversionMode.s2T => l10n.chineseConversionS2t,
+            ChineseConversionMode.t2S => l10n.chineseConversionT2s,
+          };
+        }
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(LanghuanTheme.spaceLg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                l10n.readerSettings,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: LanghuanTheme.spaceMd),
+              Text(
+                l10n.readerChineseConversion,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              const SizedBox(height: LanghuanTheme.spaceSm),
+              SegmentedButton<ChineseConversionMode>(
+                segments: [
+                  for (final mode in ChineseConversionMode.values)
+                    ButtonSegment(
+                      value: mode,
+                      label: Text(conversionLabel(mode)),
+                    ),
+                ],
+                selected: {settings.chineseConversion},
+                onSelectionChanged: (set) {
+                  notifier.setChineseConversion(set.first);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
+}
+
+Future<void> showReaderBookmarkSheet({
+  required BuildContext context,
+  required WidgetRef ref,
+  required String feedId,
+  required String bookId,
+  required List<ChapterInfoModel> chapters,
+  required void Function(String chapterId, String paragraphId)
+  onJumpToParagraph,
+  required VoidCallback onBookmarkRemoved,
+}) async {
+  final l10n = AppLocalizations.of(context);
+  await ref
+      .read(bookmarkProvider.notifier)
+      .load(feedId: feedId, bookId: bookId);
+  if (!context.mounted) return;
+
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => Consumer(
+      builder: (context, ref, _) {
+        final bookmarks = ref.watch(bookmarkProvider).items;
+        if (bookmarks.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(LanghuanTheme.spaceLg),
+            child: Center(child: Text(l10n.readerNoBookmarks)),
+          );
+        }
+
+        return ListView.builder(
+          itemCount: bookmarks.length,
+          itemBuilder: (context, index) {
+            final item = bookmarks[index];
+            final chapterIndex = chapters.indexWhere(
+              (c) => c.id == item.chapterId,
+            );
+            final chapterTitle = chapterIndex >= 0
+                ? chapters[chapterIndex].title
+                : item.chapterId;
+            return ListTile(
+              title: Text(chapterTitle),
+              subtitle: Text(
+                item.paragraphName.trim().isEmpty
+                    ? item.paragraphId
+                    : item.paragraphName,
+              ),
+              onTap: () {
+                Navigator.of(context).pop();
+                onJumpToParagraph(item.chapterId, item.paragraphId);
+              },
+              trailing: IconButton(
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () async {
+                  await ref.read(bookmarkProvider.notifier).remove(item.id);
+                  if (!context.mounted) return;
+                  onBookmarkRemoved();
+                },
+              ),
+            );
+          },
+        );
+      },
+    ),
+  );
+}
+
+Future<void> showReaderTocSheet({
+  required BuildContext context,
+  required WidgetRef ref,
+  required List<ChapterInfoModel> chapters,
+  required void Function(String chapterId) onJumpToChapter,
+}) async {
+  final reading = ref.read(readingProgressProvider);
+  final activeId = reading.activeChapterId;
+  final activeIdx = chapters.indexWhere((c) => c.id == activeId);
+  final scrollController = ScrollController(
+    initialScrollOffset: activeIdx > 0 ? activeIdx * 56.0 : 0,
+  );
+
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => Consumer(
+      builder: (context, ref, _) {
+        final reading = ref.watch(readingProgressProvider);
+        final currentActiveId = reading.activeChapterId;
+        return ListView.builder(
+          controller: scrollController,
+          itemCount: chapters.length,
+          itemExtent: 56.0,
+          itemBuilder: (context, index) {
+            final chapter = chapters[index];
+            final isActive = chapter.id == currentActiveId;
+            return ListTile(
+              leading: Text('${index + 1}'),
+              title: Text(
+                chapter.title,
+                style: isActive
+                    ? TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      )
+                    : null,
+              ),
+              selected: isActive,
+              onTap: () {
+                Navigator.of(context).pop();
+                onJumpToChapter(chapter.id);
+              },
+            );
+          },
+        );
+      },
+    ),
+  );
+
+  scrollController.dispose();
+}

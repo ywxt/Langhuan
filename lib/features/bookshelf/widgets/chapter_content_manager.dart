@@ -1,18 +1,14 @@
-import 'dart:async';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 
 import '../../../shared/theme/app_theme.dart';
 import '../../../src/rust/api/types.dart';
 import '../../feeds/feed_service.dart';
-import '../reader_settings_provider.dart';
 import 'chapter_status_block.dart';
 import 'horizontal_reader_view.dart';
 import 'page_breaker.dart';
 import 'reader_controller.dart';
 import 'reader_types.dart';
-import 'vertical_reader_view.dart';
 
 class ChapterContentManager extends StatefulWidget {
   const ChapterContentManager({
@@ -21,7 +17,6 @@ class ChapterContentManager extends StatefulWidget {
     required this.bookId,
     required this.chapters,
     required this.controller,
-    required this.mode,
     required this.fontScale,
     required this.lineHeight,
     required this.contentPadding,
@@ -35,7 +30,6 @@ class ChapterContentManager extends StatefulWidget {
   final String bookId;
   final List<ChapterInfoModel> chapters;
   final ReaderController controller;
-  final ReaderMode mode;
   final double fontScale;
   final double lineHeight;
   final EdgeInsets contentPadding;
@@ -55,7 +49,38 @@ class ChapterContentManager extends StatefulWidget {
 }
 
 class _ChapterContentManagerState extends State<ChapterContentManager> {
-  // ─ Chapter slot state ────────────────────────────────────────────────────
+  static const _enableReaderDebugLogs = bool.fromEnvironment(
+    'READER_DEBUG_LOGS',
+    defaultValue: false,
+  );
+
+  void _logReaderCore(String message) {
+    if (!kDebugMode || !_enableReaderDebugLogs) return;
+    debugPrint('[ReaderCore] $message');
+  }
+
+  void _logReaderManager(String message) {
+    if (!kDebugMode || !_enableReaderDebugLogs) return;
+    debugPrint('[ReaderManager] $message');
+  }
+
+  String _slotLabel(ValueNotifier<ChapterLoadState> slot) {
+    if (identical(slot, _prevSlot)) return 'prev';
+    if (identical(slot, _centerSlot)) return 'center';
+    if (identical(slot, _nextSlot)) return 'next';
+    return 'unknown';
+  }
+
+  void _emitCoreChanged(String reason) {
+    final prev = _prevSlot.value.runtimeType;
+    final center = _centerSlot.value.runtimeType;
+    final next = _nextSlot.value.runtimeType;
+    _logReaderManager(
+      'coreChanged reason=$reason center=$_centerChapterId '
+      'prev=$prev centerSlot=$center next=$next gen=$_loadGeneration',
+    );
+  }
+
   final ValueNotifier<ChapterLoadState> _prevSlot = ValueNotifier(
     const ChapterIdle(),
   );
@@ -71,16 +96,13 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
 
   late String _centerChapterId;
   String _pendingJumpParagraphId = '';
-  double _pendingJumpOffset = 0;
   bool _pendingFromEnd = false;
 
   String _lastReportedParagraphId = '';
-  double _lastReportedOffset = 0;
 
   int _loadGeneration = 0;
   bool _centerReady = false;
 
-  // ─ Horizontal mode state ─────────────────────────────────────────────────
   PageBreaker? _breaker;
   Size _lastPageSize = Size.zero;
   List<PageContent> _hCenterPages = [];
@@ -88,34 +110,15 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
   List<PageContent> _hNextPages = [];
   int _currentPageIndex = 0;
 
-  // ─ Vertical mode state ───────────────────────────────────────────────────
-  static const _chapterGap = 48.0;
-  late ScrollController _verticalScrollController;
-  final GlobalKey _centerKey = GlobalKey();
-  final GlobalKey _prevSliverKey = GlobalKey();
-  final GlobalKey _centerSliverKey = GlobalKey();
-  final GlobalKey _nextSliverKey = GlobalKey();
-  bool _verticalJumpInProgress = false;
-  String _verticalReportedChapterId = '';
-  String _scrollTargetParagraphId = '';
-  final GlobalKey _jumpTargetKey = GlobalKey();
-  int _ensureRetries = 0;
-  static const _maxEnsureRetries = 10;
-
-  // ─ Lifecycle ─────────────────────────────────────────────────────────────
-
   @override
   void initState() {
     super.initState();
-    _verticalScrollController = ScrollController();
 
     final startId =
         widget.controller.pendingChapterId ??
         (widget.chapters.isNotEmpty ? widget.chapters.first.id : '');
     _centerChapterId = startId;
-    _verticalReportedChapterId = startId;
     _pendingJumpParagraphId = widget.controller.pendingParagraphId;
-    _pendingJumpOffset = widget.controller.pendingOffset;
     widget.controller.consumeJump();
     widget.controller.addListener(_onJumpCommand);
 
@@ -125,7 +128,6 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
   @override
   void dispose() {
     widget.controller.removeListener(_onJumpCommand);
-    _verticalScrollController.dispose();
     _prevSlot.dispose();
     _centerSlot.dispose();
     _nextSlot.dispose();
@@ -163,7 +165,6 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
 
     if (oldWidget.chineseConversion != widget.chineseConversion) {
       _pendingJumpParagraphId = _lastReportedParagraphId;
-      _pendingJumpOffset = 0;
       _pendingFromEnd = false;
       _cache.clear();
       _centerReady = false;
@@ -172,36 +173,15 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
       return;
     }
 
-    if (oldWidget.mode != widget.mode) {
-      _pendingJumpParagraphId = _lastReportedParagraphId;
-      _pendingJumpOffset = _lastReportedOffset;
-      _pendingFromEnd = false;
-      if (widget.mode == ReaderMode.horizontalPaging) {
-        _breaker = null;
-        _lastPageSize = Size.zero;
-      } else {
-        _breaker = null;
-        _hCenterPages = [];
-        _hPrevPages = [];
-        _hNextPages = [];
-      }
-      setState(() {});
-    }
-
     if (oldWidget.fontScale != widget.fontScale ||
         oldWidget.lineHeight != widget.lineHeight) {
       _pendingJumpParagraphId = _lastReportedParagraphId;
-      _pendingJumpOffset = 0;
       _pendingFromEnd = false;
-      if (widget.mode == ReaderMode.horizontalPaging) {
-        _breaker = null;
-        _lastPageSize = Size.zero;
-      }
+      _breaker = null;
+      _lastPageSize = Size.zero;
       setState(() {});
     }
   }
-
-  // ─ Index helpers ────────────────────────────────────────────────────────
 
   int _idxOf(String chapterId) {
     final idx = widget.chapters.indexWhere((c) => c.id == chapterId);
@@ -222,8 +202,6 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
 
   bool get _isFirst => _idxOf(_centerChapterId) == 0;
   bool get _isLast => _idxOf(_centerChapterId) == widget.chapters.length - 1;
-
-  // ─ LRU cache ──────────────────────────────────────────────────────────
 
   void _putCache(String chapterId, List<ParagraphContent> paragraphs) {
     _cache.remove(chapterId);
@@ -250,26 +228,27 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
     return const ChapterIdle();
   }
 
-  // ─ Async loading ──────────────────────────────────────────────────────
-
   Future<void> _initCenter() async {
     final gen = ++_loadGeneration;
+    _logReaderManager(
+      'coreChanged reason=initCenter:start center=$_centerChapterId gen=$gen',
+    );
 
     _prevSlot.value = const ChapterIdle();
     _centerSlot.value = const ChapterLoading();
     _nextSlot.value = const ChapterIdle();
+    _emitCoreChanged('initCenter:slotsReset');
     setState(() {});
 
     await _loadSlot(_centerChapterId, _centerSlot, gen);
     if (!mounted || gen != _loadGeneration) return;
 
     _centerReady = true;
+    _emitCoreChanged('initCenter:centerReady');
 
-    if (widget.mode == ReaderMode.horizontalPaging) {
-      _ensureBreaker();
-      _rebuildHorizontalPages();
-      _resolveHorizontalPendingJump();
-    }
+    _ensureBreaker();
+    _rebuildHorizontalPages();
+    _resolveHorizontalPendingJump();
 
     setState(() {});
     _loadAdjacent(gen);
@@ -280,11 +259,18 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
     ValueNotifier<ChapterLoadState> slot,
     int gen,
   ) async {
+    final slotName = _slotLabel(slot);
+    _logReaderCore(
+      'loadSlot start chapter=$chapterId slot=$slotName gen=$gen activeGen=$_loadGeneration',
+    );
     if (_cache.containsKey(chapterId)) {
       slot.value = ChapterLoaded(_cache[chapterId]!);
+      _logReaderCore('loadSlot cacheHit chapter=$chapterId slot=$slotName');
+      _emitCoreChanged('loadSlot:cacheHit:$slotName');
       return;
     }
     slot.value = const ChapterLoading();
+    _emitCoreChanged('loadSlot:loading:$slotName');
     try {
       final paragraphs = await FeedService.instance
           .paragraphs(
@@ -293,50 +279,64 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
             chapterId: chapterId,
           )
           .toList();
-      if (!mounted || gen != _loadGeneration) return;
+      if (!mounted || gen != _loadGeneration) {
+        _logReaderCore(
+          'loadSlot staleResult chapter=$chapterId slot=$slotName '
+          'gen=$gen activeGen=$_loadGeneration mounted=$mounted',
+        );
+        return;
+      }
       _putCache(chapterId, paragraphs);
       slot.value = ChapterLoaded(paragraphs);
+      _logReaderCore(
+        'loadSlot success chapter=$chapterId slot=$slotName paragraphs=${paragraphs.length}',
+      );
+      _emitCoreChanged('loadSlot:loaded:$slotName');
 
-      if (widget.mode == ReaderMode.horizontalPaging) {
-        _rebuildHorizontalPages();
-        if (slot == _centerSlot && _pendingJumpParagraphId.isNotEmpty) {
-          _resolveHorizontalPendingJump();
-        }
-        setState(() {});
+      _rebuildHorizontalPages();
+      if (slot == _centerSlot && _pendingJumpParagraphId.isNotEmpty) {
+        _resolveHorizontalPendingJump();
       }
+      setState(() {});
     } catch (e) {
-      if (!mounted || gen != _loadGeneration) return;
+      if (!mounted || gen != _loadGeneration) {
+        _logReaderCore(
+          'loadSlot staleError chapter=$chapterId slot=$slotName '
+          'gen=$gen activeGen=$_loadGeneration mounted=$mounted',
+        );
+        return;
+      }
       slot.value = ChapterLoadError(
         error: e,
         message: normalizeErrorMessage(e),
       );
-      if (widget.mode == ReaderMode.horizontalPaging) {
-        setState(() {});
-      }
+      _logReaderCore(
+        'loadSlot error chapter=$chapterId slot=$slotName error=${normalizeErrorMessage(e)}',
+      );
+      _emitCoreChanged('loadSlot:error:$slotName');
+      setState(() {});
     }
   }
 
   void _loadAdjacent(int gen) {
     final prev = _prevId();
     final next = _nextId();
+    _logReaderCore(
+      'loadAdjacent gen=$gen center=$_centerChapterId prev=$prev next=$next',
+    );
     if (prev != null) _loadSlot(prev, _prevSlot, gen);
     if (next != null) _loadSlot(next, _nextSlot, gen);
   }
 
-  // ─ Position update callback ───────────────────────────────────────────
-
   void _onPositionUpdate(String chapterId, String paragraphId, double offset) {
     _lastReportedParagraphId = paragraphId;
-    _lastReportedOffset = offset;
 
     widget.controller.reportPosition(
       chapterId: chapterId,
       paragraphId: paragraphId,
-      offset: offset,
+      paragraphOffset: offset,
     );
   }
-
-  // ─ Retry callback ─────────────────────────────────────────────────────
 
   void _onRetry(String chapterId) {
     final gen = _loadGeneration;
@@ -349,26 +349,18 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
     }
   }
 
-  // ─ Window slide ───────────────────────────────────────────────────────
-
   void _performSlide(int direction) {
     final newCenterId = direction > 0 ? _nextId() : _prevId();
     if (newCenterId == null) return;
 
-    if (widget.mode == ReaderMode.verticalScroll) {
-      _performVerticalSlide(direction, newCenterId);
-      return;
-    }
-
     _centerChapterId = newCenterId;
     _pendingFromEnd = direction < 0;
     _pendingJumpParagraphId = '';
-    _pendingJumpOffset = 0;
 
     widget.controller.reportPosition(
       chapterId: newCenterId,
       paragraphId: '',
-      offset: 0,
+      paragraphOffset: 0,
     );
 
     _centerSlot.value = _cache.containsKey(newCenterId)
@@ -387,14 +379,11 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
 
     setState(() {});
 
-    // If center chapter is not cached, load it (otherwise it stays Loading forever).
     if (!_cache.containsKey(newCenterId)) {
       _loadSlot(newCenterId, _centerSlot, _loadGeneration);
     }
     _loadAdjacent(_loadGeneration);
   }
-
-  // ─ Jump command ───────────────────────────────────────────────────────
 
   void _onJumpCommand() {
     final targetId = widget.controller.pendingChapterId;
@@ -405,33 +394,28 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
     widget.controller.consumeJump();
 
     if (targetId == _centerChapterId && _centerReady) {
-      if (widget.mode == ReaderMode.horizontalPaging) {
-        if (_hCenterPages.isNotEmpty && paragraphId.isNotEmpty) {
-          _currentPageIndex = PageBreaker.pageForParagraph(
-            _hCenterPages,
-            paragraphId,
-          );
-        } else {
-          _currentPageIndex = 0;
-        }
-        _reportCurrentHorizontalPosition();
-        setState(() {});
-        return;
+      if (_hCenterPages.isNotEmpty && paragraphId.isNotEmpty) {
+        _currentPageIndex = PageBreaker.pageForParagraph(
+          _hCenterPages,
+          paragraphId,
+        );
+      } else {
+        _currentPageIndex = 0;
       }
-      // Vertical mode: jump within current chapter
-      _verticalJumpToPosition(paragraphId, offset);
+      _onPositionUpdate(_centerChapterId, paragraphId, offset);
+      _reportCurrentHorizontalPosition();
+      setState(() {});
       return;
     }
 
     _centerChapterId = targetId;
     _pendingJumpParagraphId = paragraphId;
-    _pendingJumpOffset = offset;
     _pendingFromEnd = false;
 
     widget.controller.reportPosition(
       chapterId: targetId,
       paragraphId: paragraphId,
-      offset: offset,
+      paragraphOffset: offset,
     );
 
     if (_cache.containsKey(targetId)) {
@@ -440,10 +424,8 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
       _nextSlot.value = _resolveSlot(_nextId());
       _centerReady = true;
 
-      if (widget.mode == ReaderMode.horizontalPaging) {
-        _rebuildHorizontalPages();
-        _resolveHorizontalPendingJump();
-      }
+      _rebuildHorizontalPages();
+      _resolveHorizontalPendingJump();
 
       setState(() {});
       _loadAdjacent(_loadGeneration);
@@ -452,8 +434,6 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
       _initCenter();
     }
   }
-
-  // ─ Horizontal mode helpers ────────────────────────────────────────────
 
   void _ensureBreaker() {
     final size = MediaQuery.sizeOf(context);
@@ -577,201 +557,6 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
     return null;
   }
 
-  // ─ Vertical mode helpers ──────────────────────────────────────────────
-
-  double _sliverExtent(GlobalKey key) {
-    final ctx = key.currentContext;
-    if (ctx == null) return 0;
-    final renderObject = ctx.findRenderObject();
-    if (renderObject is RenderSliver) {
-      return renderObject.geometry?.scrollExtent ?? 0;
-    }
-    return 0;
-  }
-
-  void _performVerticalSlide(int direction, String newCenterId) {
-    final oldCenterExt = _sliverExtent(_centerSliverKey);
-    final oldPrevExt = _sliverExtent(_prevSliverKey);
-    final oldOffset = _verticalScrollController.hasClients
-        ? _verticalScrollController.offset
-        : 0.0;
-
-    _centerChapterId = newCenterId;
-    _verticalReportedChapterId = newCenterId;
-    _pendingFromEnd = direction < 0;
-    _pendingJumpParagraphId = '';
-    _pendingJumpOffset = 0;
-
-    widget.controller.reportPosition(
-      chapterId: newCenterId,
-      paragraphId: '',
-      offset: 0,
-    );
-
-    _centerSlot.value = _cache.containsKey(newCenterId)
-        ? ChapterLoaded(_cache[newCenterId]!)
-        : const ChapterLoading();
-    _prevSlot.value = _resolveSlot(_prevId());
-    _nextSlot.value = _resolveSlot(_nextId());
-
-    _verticalJumpInProgress = true;
-    setState(() {});
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_verticalScrollController.hasClients) {
-        _verticalJumpInProgress = false;
-        return;
-      }
-
-      final double delta;
-      if (direction > 0) {
-        delta = -(oldCenterExt + _chapterGap);
-      } else {
-        delta = oldPrevExt + _chapterGap;
-      }
-
-      final target = oldOffset + delta;
-      final pos = _verticalScrollController.position;
-      _verticalScrollController.jumpTo(
-        target.clamp(pos.minScrollExtent, pos.maxScrollExtent),
-      );
-      _verticalJumpInProgress = false;
-    });
-
-    _loadAdjacent(_loadGeneration);
-  }
-
-  bool _onVerticalScrollNotification(ScrollNotification n) {
-    if (_verticalJumpInProgress || !_verticalScrollController.hasClients) {
-      return false;
-    }
-
-    if (n is ScrollUpdateNotification) {
-      _verticalReportPosition();
-    }
-
-    if (n is ScrollEndNotification) {
-      _verticalReportPosition();
-      _verticalDetectChapter();
-    }
-
-    return false;
-  }
-
-  void _verticalReportPosition() {
-    if (!_verticalScrollController.hasClients) return;
-    final offset = _verticalScrollController.offset;
-    final centerExt = _sliverExtent(_centerSliverKey);
-
-    if (centerExt <= 0) return;
-
-    final centerState = _centerSlot.value;
-    if (centerState is! ChapterLoaded) return;
-    final paragraphs = centerState.paragraphs;
-    if (paragraphs.isEmpty) return;
-
-    if (offset < 0 || offset > centerExt) return;
-
-    final ratio = (offset / centerExt).clamp(0.0, 1.0);
-    final paraIdx = (ratio * paragraphs.length).floor().clamp(
-      0,
-      paragraphs.length - 1,
-    );
-    _onPositionUpdate(
-      _centerChapterId,
-      paragraphs[paraIdx].id.toStringValue(),
-      offset,
-    );
-  }
-
-  void _verticalDetectChapter() {
-    if (!_verticalScrollController.hasClients) return;
-
-    final vpHeight = _verticalScrollController.position.viewportDimension;
-    final vpCenter = _verticalScrollController.offset + vpHeight / 2;
-    final centerExt = _sliverExtent(_centerSliverKey);
-
-    if (vpCenter >= 0 && vpCenter < centerExt) {
-      _verticalReportedChapterId = _centerChapterId;
-      return;
-    }
-
-    if (vpCenter >= centerExt + _chapterGap && _nextId() != null) {
-      if (_verticalReportedChapterId != _nextId()) {
-        _verticalReportedChapterId = _nextId()!;
-        _performSlide(1);
-      }
-      return;
-    }
-
-    if (vpCenter < 0 && _prevId() != null) {
-      if (_verticalReportedChapterId != _prevId()) {
-        _verticalReportedChapterId = _prevId()!;
-        _performSlide(-1);
-      }
-      return;
-    }
-  }
-
-  void _verticalJumpToPosition(String paragraphId, double offset) {
-    _verticalJumpInProgress = true;
-    _ensureRetries = 0;
-    if (paragraphId.isEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_verticalScrollController.hasClients) {
-          _verticalScrollController.jumpTo(
-            offset.clamp(
-              _verticalScrollController.position.minScrollExtent,
-              _verticalScrollController.position.maxScrollExtent,
-            ),
-          );
-        }
-        _verticalJumpInProgress = false;
-      });
-      return;
-    }
-    _scrollTargetParagraphId = paragraphId;
-    setState(() {});
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _ensureTargetVisible();
-    });
-  }
-
-  void _ensureTargetVisible() {
-    if (!mounted || !_verticalScrollController.hasClients) return;
-    final ctx = _jumpTargetKey.currentContext;
-    if (ctx != null) {
-      Scrollable.ensureVisible(ctx, alignment: 0.0, duration: Duration.zero);
-      setState(() => _scrollTargetParagraphId = '');
-      _verticalJumpInProgress = false;
-      _ensureRetries = 0;
-      return;
-    }
-
-    if (++_ensureRetries > _maxEnsureRetries) {
-      setState(() => _scrollTargetParagraphId = '');
-      _verticalJumpInProgress = false;
-      _ensureRetries = 0;
-      return;
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _ensureTargetVisible();
-    });
-  }
-
-  void _scheduleVerticalInitialScroll() {
-    if (_pendingJumpParagraphId.isNotEmpty) {
-      _verticalJumpToPosition(_pendingJumpParagraphId, 0);
-      _pendingJumpParagraphId = '';
-    } else if (_pendingJumpOffset > 0) {
-      _verticalJumpToPosition('', _pendingJumpOffset);
-      _pendingJumpOffset = 0;
-    }
-  }
-
-  // ─ Build ──────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     if (!_centerReady) {
@@ -789,72 +574,39 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
       );
     }
 
-    if (widget.mode == ReaderMode.horizontalPaging) {
-      _ensureBreaker();
-      if (_hCenterPages.isEmpty && centerState is ChapterLoaded) {
-        _rebuildHorizontalPages();
-        _resolveHorizontalPendingJump();
-      }
-
-      final prevState = _prevSlot.value;
-      final nextState = _nextSlot.value;
-
-      return HorizontalReaderView(
-        currentPage: _hCenterPages.isNotEmpty
-            ? _hCenterPages[_currentPageIndex]
-            : null,
-        prevPage: _resolvePrevPage(),
-        nextPage: _resolveNextPage(),
-        isFirstPage: _currentPageIndex == 0 && _isFirst,
-        isLastPage:
-            _currentPageIndex ==
-                (_hCenterPages.isEmpty ? 0 : _hCenterPages.length - 1) &&
-            _isLast,
-        fontScale: widget.fontScale,
-        lineHeight: widget.lineHeight,
-        contentPadding: widget.contentPadding,
-        onNextPage: _onHorizontalNextPage,
-        onPrevPage: _onHorizontalPrevPage,
-        centerChapterId: _centerChapterId,
-        prevError: prevState is ChapterLoadError ? prevState.message : null,
-        nextError: nextState is ChapterLoadError ? nextState.message : null,
-        onRetryPrev: _prevId() != null ? () => _onRetry(_prevId()!) : null,
-        onRetryNext: _nextId() != null ? () => _onRetry(_nextId()!) : null,
-        onParagraphLongPress: widget.onParagraphLongPress,
-        selectedChapterId: widget.selectedChapterId,
-        selectedParagraphId: widget.selectedParagraphId,
-      );
+    _ensureBreaker();
+    if (_hCenterPages.isEmpty && centerState is ChapterLoaded) {
+      _rebuildHorizontalPages();
+      _resolveHorizontalPendingJump();
     }
 
-    // Vertical mode
-    if (_pendingJumpParagraphId.isNotEmpty || _pendingJumpOffset > 0) {
-      _scheduleVerticalInitialScroll();
-    }
+    final prevState = _prevSlot.value;
+    final nextState = _nextSlot.value;
 
-    return VerticalReaderView(
-      centerChapterId: _centerChapterId,
-      prevChapterId: _prevId(),
-      nextChapterId: _nextId(),
-      prevSlot: _prevSlot,
-      centerSlot: _centerSlot,
-      nextSlot: _nextSlot,
-      scrollController: _verticalScrollController,
+    return HorizontalReaderView(
+      currentPage: _hCenterPages.isNotEmpty
+          ? _hCenterPages[_currentPageIndex]
+          : null,
+      prevPage: _resolvePrevPage(),
+      nextPage: _resolveNextPage(),
+      isFirstPage: _currentPageIndex == 0 && _isFirst,
+      isLastPage:
+          _currentPageIndex ==
+              (_hCenterPages.isEmpty ? 0 : _hCenterPages.length - 1) &&
+          _isLast,
       fontScale: widget.fontScale,
       lineHeight: widget.lineHeight,
       contentPadding: widget.contentPadding,
-      onRetry: _onRetry,
-      isFirst: _isFirst,
-      isLast: _isLast,
+      onNextPage: _onHorizontalNextPage,
+      onPrevPage: _onHorizontalPrevPage,
+      centerChapterId: _centerChapterId,
+      prevError: prevState is ChapterLoadError ? prevState.message : null,
+      nextError: nextState is ChapterLoadError ? nextState.message : null,
+      onRetryPrev: _prevId() != null ? () => _onRetry(_prevId()!) : null,
+      onRetryNext: _nextId() != null ? () => _onRetry(_nextId()!) : null,
       onParagraphLongPress: widget.onParagraphLongPress,
       selectedChapterId: widget.selectedChapterId,
       selectedParagraphId: widget.selectedParagraphId,
-      onScrollNotification: _onVerticalScrollNotification,
-      centerKey: _centerKey,
-      prevSliverKey: _prevSliverKey,
-      centerSliverKey: _centerSliverKey,
-      nextSliverKey: _nextSliverKey,
-      scrollTargetParagraphId: _scrollTargetParagraphId,
-      jumpTargetKey: _jumpTargetKey,
     );
   }
 }

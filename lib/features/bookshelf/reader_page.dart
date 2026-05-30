@@ -1,24 +1,19 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:fluttertoast/fluttertoast.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
 import '../../src/rust/api/types.dart';
-import '../feeds/feed_service.dart';
-import 'bookmark_provider.dart';
-import 'book_providers.dart';
+import 'reader_page_actions.dart';
+import 'reader_screen_controller.dart';
 import 'reader_settings_provider.dart';
 import 'reading_progress_provider.dart';
 import 'widgets/chapter_content_manager.dart';
-import 'widgets/reader_bottom_bar.dart';
 import 'widgets/reader_controller.dart';
-import 'widgets/reader_top_bar.dart';
+import 'widgets/reader_overlays.dart';
 import 'widgets/reader_types.dart';
 
 class ReaderPage extends ConsumerStatefulWidget {
@@ -40,201 +35,53 @@ class ReaderPage extends ConsumerStatefulWidget {
 }
 
 class _ReaderPageState extends ConsumerState<ReaderPage> {
-  bool _isInitializing = false;
-  Object? _initError;
-  List<ChapterInfoModel> _chapters = const [];
-  bool _showControls = false;
-  bool _isRefreshingChapter = false;
-  late final ReadingProgressNotifier _progressNotifier;
   late final ReaderController _readerController;
-
-  ParagraphSelection? _selection;
+  late final ReaderScreenController _screenController;
+  late final ReaderPageActions _actions;
 
   @override
   void initState() {
     super.initState();
-    _progressNotifier = ref.read(readingProgressProvider.notifier);
     _readerController = ReaderController();
-    _readerController.onPositionChanged = _onPositionChanged;
+    _screenController = ReaderScreenController(
+      ref: ref,
+      readerController: _readerController,
+      feedId: widget.feedId,
+      bookId: widget.bookId,
+      initialChapterId: widget.chapterId,
+      initialParagraphId: widget.paragraphId,
+    );
+    _actions = ReaderPageActions(
+      ref: ref,
+      contextOf: () => context,
+      screenController: _screenController,
+      feedId: widget.feedId,
+      bookId: widget.bookId,
+    );
+    _screenController.addListener(_onScreenControllerChanged);
+    _readerController.onPositionChanged = _screenController.onPositionChanged;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _initializeBook();
+      _screenController.initialize();
     });
   }
 
   @override
   void dispose() {
+    _screenController.removeListener(_onScreenControllerChanged);
+    _screenController.dispose();
     _readerController.onPositionChanged = null;
     _readerController.dispose();
     super.dispose();
   }
 
-  Future<void> _initializeBook() async {
-    if (widget.feedId.isEmpty || widget.bookId.isEmpty) return;
-
-    setState(() {
-      _isInitializing = true;
-      _initError = null;
-    });
-
-    try {
-      final chapters = await FeedService.instance
-          .chapters(feedId: widget.feedId, bookId: widget.bookId)
-          .toList();
-
-      final fallbackChapterId = _resolveInitialChapterId(chapters);
-      final fallbackParagraphId = fallbackChapterId == widget.chapterId
-          ? widget.paragraphId
-          : '';
-
-      await _progressNotifier.load(
-        feedId: widget.feedId,
-        bookId: widget.bookId,
-        fallbackChapterId: fallbackChapterId,
-        fallbackParagraphId: fallbackParagraphId,
-      );
-
-      if (!mounted) return;
-
-      final activeId = ref.read(readingProgressProvider).activeChapterId;
-      if (chapters.isNotEmpty && !chapters.any((c) => c.id == activeId)) {
-        _progressNotifier.setActiveChapter(chapters.first.id);
-      }
-
-      setState(() {
-        _chapters = chapters;
-        _isInitializing = false;
-      });
-
-      final String startChapterId;
-      final String startParagraphId;
-      if (widget.chapterId.isNotEmpty &&
-          chapters.any((c) => c.id == widget.chapterId)) {
-        startChapterId = widget.chapterId;
-        startParagraphId = widget.paragraphId;
-      } else {
-        startChapterId = ref.read(readingProgressProvider).activeChapterId;
-        startParagraphId = ref.read(readingProgressProvider).activeParagraphId;
-      }
-      _readerController.jumpTo(
-        chapterId: startChapterId,
-        paragraphId: startParagraphId,
-      );
-
-      unawaited(
-        ref
-            .read(bookInfoProvider.notifier)
-            .load(feedId: widget.feedId, bookId: widget.bookId),
-      );
-      unawaited(
-        ref
-            .read(bookmarkProvider.notifier)
-            .load(feedId: widget.feedId, bookId: widget.bookId),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _isInitializing = false;
-        _initError = error;
-      });
-    }
-  }
-
-  String _resolveInitialChapterId(List<ChapterInfoModel> chapters) {
-    if (widget.chapterId.isNotEmpty &&
-        chapters.any((chapter) => chapter.id == widget.chapterId)) {
-      return widget.chapterId;
-    }
-    if (chapters.isNotEmpty) {
-      return chapters.first.id;
-    }
-    return '';
-  }
-
-  void _showToast(String message) {
-    final theme = Theme.of(context);
-    Fluttertoast.showToast(
-      msg: message,
-      backgroundColor: theme.colorScheme.onSurface,
-      textColor: theme.colorScheme.surface,
-      fontSize: 14,
-    );
+  void _onScreenControllerChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   void _toggleControls() {
-    setState(() {
-      if (_selection != null) {
-        _selection = null;
-        return;
-      }
-      _showControls = !_showControls;
-    });
-  }
-
-  void _jumpToChapter(String chapterId, {String paragraphId = ''}) {
-    _readerController.jumpTo(chapterId: chapterId, paragraphId: paragraphId);
-  }
-
-  void _onPositionChanged(ReaderPosition pos) {
-    _progressNotifier.setActiveChapter(pos.chapterId, paragraphId: pos.paragraphId);
-    _progressNotifier.setActiveOffset(pos.offset);
-    unawaited(_progressNotifier.saveActive());
-  }
-
-
-  Future<void> _refreshCurrentChapter(String chapterId) async {
-    if (_isRefreshingChapter || chapterId.isEmpty) return;
-
-    setState(() {
-      _isRefreshingChapter = true;
-    });
-    try {
-      await FeedService.instance
-          .paragraphs(
-            feedId: widget.feedId,
-            bookId: widget.bookId,
-            chapterId: chapterId,
-            forceRefresh: true,
-          )
-          .drain<void>();
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isRefreshingChapter = false;
-        });
-      }
-    }
-  }
-
-  String _paragraphPreview(ParagraphContent paragraph) {
-    final text = switch (paragraph) {
-      ParagraphContent_Title(:final text) => text,
-      ParagraphContent_Text(:final content) => content,
-      ParagraphContent_Image(:final alt) => alt ?? '',
-    };
-    final trimmed = text.trim().replaceAll(RegExp(r'\s+'), ' ');
-    return trimmed.length > 20 ? '${trimmed.substring(0, 20)}…' : trimmed;
-  }
-
-  Future<void> _addBookmark({
-    required String chapterId,
-    required String paragraphId,
-    required ParagraphContent paragraph,
-  }) async {
-    if (chapterId.isEmpty) return;
-    final preview = _paragraphPreview(paragraph);
-    final created = await ref
-        .read(bookmarkProvider.notifier)
-        .add(
-          feedId: widget.feedId,
-          bookId: widget.bookId,
-          chapterId: chapterId,
-          paragraphId: paragraphId,
-          paragraphName: preview,
-          paragraphPreview: preview,
-        );
-    if (!mounted || created == null) return;
-    _showToast(AppLocalizations.of(context).readerBookmarkAdded);
+    _screenController.toggleControls();
   }
 
   void _onParagraphLongPress(
@@ -243,407 +90,16 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     ParagraphContent paragraph,
     Rect globalRect,
   ) {
-    setState(() {
-      _selection = ParagraphSelection(
-        chapterId: chapterId,
-        paragraphId: paragraphId,
-        paragraph: paragraph,
-        rect: globalRect,
-      );
-    });
+    _screenController.setSelection(
+      chapterId: chapterId,
+      paragraphId: paragraphId,
+      paragraph: paragraph,
+      globalRect: globalRect,
+    );
   }
 
   void _clearSelection() {
-    if (_selection != null) {
-      setState(() => _selection = null);
-    }
-  }
-
-  Future<void> _openBookmarkSheet() async {
-    final l10n = AppLocalizations.of(context);
-    await ref
-        .read(bookmarkProvider.notifier)
-        .load(feedId: widget.feedId, bookId: widget.bookId);
-    if (!mounted) return;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => Consumer(
-        builder: (context, ref, _) {
-          final bookmarks = ref.watch(bookmarkProvider).items;
-          if (bookmarks.isEmpty) {
-            return Padding(
-              padding: const EdgeInsets.all(LanghuanTheme.spaceLg),
-              child: Center(child: Text(l10n.readerNoBookmarks)),
-            );
-          }
-
-          return ListView.builder(
-            itemCount: bookmarks.length,
-            itemBuilder: (context, index) {
-              final item = bookmarks[index];
-              final chapterIndex = _chapters.indexWhere(
-                (c) => c.id == item.chapterId,
-              );
-              final chapterTitle = chapterIndex >= 0
-                  ? _chapters[chapterIndex].title
-                  : item.chapterId;
-              return ListTile(
-                title: Text(chapterTitle),
-                subtitle: Text(
-                  item.paragraphName.trim().isEmpty
-                      ? item.paragraphId
-                      : item.paragraphName,
-                ),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _jumpToChapter(
-                    item.chapterId,
-                    paragraphId: item.paragraphId,
-                  );
-                },
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () async {
-                    await ref.read(bookmarkProvider.notifier).remove(item.id);
-                    if (!mounted) return;
-                    _showToast(l10n.readerBookmarkRemoved);
-                  },
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-
-  Future<void> _openTocSheet() async {
-    final reading = ref.read(readingProgressProvider);
-    final activeId = reading.activeChapterId;
-    final activeIdx = _chapters.indexWhere((c) => c.id == activeId);
-    final scrollController = ScrollController(
-      initialScrollOffset: activeIdx > 0 ? activeIdx * 56.0 : 0,
-    );
-
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => Consumer(
-        builder: (context, ref, _) {
-          final reading = ref.watch(readingProgressProvider);
-          final currentActiveId = reading.activeChapterId;
-          return ListView.builder(
-            controller: scrollController,
-            itemCount: _chapters.length,
-            itemExtent: 56.0,
-            itemBuilder: (context, index) {
-              final chapter = _chapters[index];
-              final isActive = chapter.id == currentActiveId;
-              return ListTile(
-                leading: Text('${index + 1}'),
-                title: Text(
-                  chapter.title,
-                  style: isActive
-                      ? TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.bold,
-                        )
-                      : null,
-                ),
-                selected: isActive,
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _jumpToChapter(chapter.id);
-                },
-              );
-            },
-          );
-        },
-      ),
-    );
-
-    scrollController.dispose();
-  }
-
-  Future<void> _openInterfaceSheet() async {
-    final l10n = AppLocalizations.of(context);
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => Consumer(
-        builder: (context, ref, _) {
-          final settings = ref.watch(readerSettingsProvider);
-          final notifier = ref.read(readerSettingsProvider.notifier);
-
-          return StatefulBuilder(
-            builder: (context, setModalState) {
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(LanghuanTheme.spaceLg),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      l10n.readerInterface,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: LanghuanTheme.spaceMd),
-                    SegmentedButton<ReaderMode>(
-                      segments: [
-                        ButtonSegment(
-                          value: ReaderMode.verticalScroll,
-                          label: Text(l10n.readerModeVertical),
-                          icon: const Icon(Icons.swap_vert),
-                        ),
-                        ButtonSegment(
-                          value: ReaderMode.horizontalPaging,
-                          label: Text(l10n.readerModeHorizontal),
-                          icon: const Icon(Icons.swap_horiz),
-                        ),
-                      ],
-                      selected: {settings.mode},
-                      onSelectionChanged: (set) {
-                        notifier.setMode(set.first);
-                        setModalState(() {});
-                      },
-                    ),
-                    const SizedBox(height: LanghuanTheme.spaceMd),
-                    Text('Font ${settings.fontScale.toStringAsFixed(2)}x'),
-                    Slider(
-                      value: settings.fontScale,
-                      min: 0.8,
-                      max: 1.8,
-                      divisions: 10,
-                      onChanged: (v) {
-                        notifier.setFontScale(v);
-                        setModalState(() {});
-                      },
-                    ),
-                    const SizedBox(height: LanghuanTheme.spaceSm),
-                    Text(
-                      'Line Height ${settings.lineHeight.toStringAsFixed(2)}',
-                    ),
-                    Slider(
-                      value: settings.lineHeight,
-                      min: 1.2,
-                      max: 2.4,
-                      divisions: 12,
-                      onChanged: (v) {
-                        notifier.setLineHeight(v);
-                        setModalState(() {});
-                      },
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-
-  Future<void> _openSettingsSheet() async {
-    final l10n = AppLocalizations.of(context);
-
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => Consumer(
-        builder: (context, ref, _) {
-          final settings = ref.watch(readerSettingsProvider);
-          final notifier = ref.read(readerSettingsProvider.notifier);
-
-          String conversionLabel(ChineseConversionMode mode) {
-            return switch (mode) {
-              ChineseConversionMode.none => l10n.chineseConversionNone,
-              ChineseConversionMode.s2T => l10n.chineseConversionS2t,
-              ChineseConversionMode.t2S => l10n.chineseConversionT2s,
-            };
-          }
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(LanghuanTheme.spaceLg),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  l10n.readerSettings,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: LanghuanTheme.spaceMd),
-                Text(
-                  l10n.readerChineseConversion,
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-                const SizedBox(height: LanghuanTheme.spaceSm),
-                SegmentedButton<ChineseConversionMode>(
-                  segments: [
-                    for (final mode in ChineseConversionMode.values)
-                      ButtonSegment(
-                        value: mode,
-                        label: Text(conversionLabel(mode)),
-                      ),
-                  ],
-                  selected: {settings.chineseConversion},
-                  onSelectionChanged: (set) {
-                    notifier.setChineseConversion(set.first);
-                  },
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildSelectionToolbar(ThemeData theme) {
-    final sel = _selection!;
-    final l10n = AppLocalizations.of(context);
-    final screenWidth = MediaQuery.sizeOf(context).width;
-
-    const toolbarHeight = 40.0;
-    const toolbarPadding = 8.0;
-    final top = sel.rect.top - toolbarHeight - toolbarPadding;
-    final safeTop = top < MediaQuery.of(context).padding.top + 4
-        ? sel.rect.bottom + toolbarPadding
-        : top;
-
-    return Positioned(
-      top: safeTop,
-      left: 0,
-      right: 0,
-      child: Center(
-        child: Material(
-          elevation: 4,
-          borderRadius: BorderRadius.circular(8),
-          color: theme.colorScheme.surfaceContainer,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: screenWidth * 0.7),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _toolbarButton(
-                  icon: Icons.bookmark_add_outlined,
-                  label: l10n.readerAddBookmark,
-                  onTap: () {
-                    _addBookmark(
-                      chapterId: sel.chapterId,
-                      paragraphId: sel.paragraphId,
-                      paragraph: sel.paragraph,
-                    );
-                    _clearSelection();
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _toolbarButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 18),
-            const SizedBox(width: 4),
-            Text(label, style: const TextStyle(fontSize: 13)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTopBarOverlay({
-    required ThemeData readerTheme,
-    required double topPadding,
-    required String chapterTitle,
-    required String activeChapterId,
-    required AppLocalizations l10n,
-  }) {
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: IgnorePointer(
-        ignoring: !_showControls,
-        child: AnimatedSlide(
-          duration: const Duration(milliseconds: 180),
-          offset: _showControls ? Offset.zero : const Offset(0, -1),
-          child: AnimatedOpacity(
-            duration: const Duration(milliseconds: 180),
-            opacity: _showControls ? 1 : 0,
-            child: ReaderTopBar(
-              topPadding: topPadding,
-              chapterTitle: chapterTitle,
-              backgroundColor: readerTheme.colorScheme.surfaceContainer,
-              titleTextStyle: readerTheme.textTheme.titleMedium,
-              bookmarksTooltip: l10n.readerBookmarks,
-              refreshTooltip: l10n.readerRefreshChapter,
-              isRefreshing: _isRefreshingChapter,
-              onBack: () => Navigator.of(context).pop(),
-              onOpenBookmarks: _openBookmarkSheet,
-              onRefresh: () => _refreshCurrentChapter(activeChapterId),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomBarOverlay({
-    required ThemeData readerTheme,
-    required int currentIdx,
-  }) {
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
-      child: IgnorePointer(
-        ignoring: !_showControls,
-        child: AnimatedSlide(
-          duration: const Duration(milliseconds: 180),
-          offset: _showControls ? Offset.zero : const Offset(0, 1),
-          child: AnimatedOpacity(
-            duration: const Duration(milliseconds: 180),
-            opacity: _showControls ? 1 : 0,
-            child: ReaderBottomBar(
-              chapters: _chapters,
-              currentIndex: currentIdx,
-              isSwitchingChapter: _isRefreshingChapter,
-              onPrevious: () {
-                if (currentIdx > 0) {
-                  _jumpToChapter(_chapters[currentIdx - 1].id);
-                }
-              },
-              onNext: () {
-                if (currentIdx < _chapters.length - 1) {
-                  _jumpToChapter(_chapters[currentIdx + 1].id);
-                }
-              },
-              onOpenToc: _openTocSheet,
-              onOpenInterface: _openInterfaceSheet,
-              onOpenSettings: _openSettingsSheet,
-            ),
-          ),
-        ),
-      ),
-    );
+    _screenController.clearSelection();
   }
 
   @override
@@ -666,26 +122,27 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
       );
     }
 
-    if (_isInitializing) {
+    if (_screenController.isInitializing) {
       return Scaffold(
         appBar: AppBar(title: Text(l10n.readerTitle)),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
-    if (_initError != null && _chapters.isEmpty) {
+    if (_screenController.initError != null &&
+        _screenController.chapters.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: Text(l10n.readerTitle)),
         body: ErrorState(
           title: l10n.readerLoadError,
-          message: normalizeErrorMessage(_initError!),
-          onRetry: _initializeBook,
+          message: normalizeErrorMessage(_screenController.initError!),
+          onRetry: _screenController.initialize,
           retryLabel: l10n.bookDetailRetry,
         ),
       );
     }
 
-    if (_chapters.isEmpty) {
+    if (_screenController.chapters.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: Text(l10n.readerTitle)),
         body: EmptyState(
@@ -696,13 +153,13 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     }
 
     final effectiveChapterId = activeChapterId.isEmpty
-        ? _chapters.first.id
+        ? _screenController.chapters.first.id
         : activeChapterId;
 
-    final currentIdx = _chapters
+    final currentIdx = _screenController.chapters
         .indexWhere((c) => c.id == effectiveChapterId)
-        .clamp(0, _chapters.length - 1);
-    final chapterTitle = _chapters[currentIdx].title;
+        .clamp(0, _screenController.chapters.length - 1);
+    final chapterTitle = _screenController.chapters[currentIdx].title;
 
     final mediaQuery = MediaQuery.of(context);
     final topPadding = mediaQuery.padding.top;
@@ -726,38 +183,73 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                 Positioned.fill(
                   child: RepaintBoundary(
                     child: ChapterContentManager(
-                    feedId: widget.feedId,
-                    bookId: widget.bookId,
-                    chapters: _chapters,
-                    controller: _readerController,
-                    mode: settings.mode,
-                    fontScale: settings.fontScale,
-                    lineHeight: settings.lineHeight,
-                    chineseConversion: settings.chineseConversion,
-                    contentPadding: EdgeInsets.fromLTRB(
-                      LanghuanTheme.spaceLg,
-                      topPadding + LanghuanTheme.spaceMd,
-                      LanghuanTheme.spaceLg,
-                      LanghuanTheme.spaceLg,
+                      feedId: widget.feedId,
+                      bookId: widget.bookId,
+                      chapters: _screenController.chapters,
+                      controller: _readerController,
+                      fontScale: settings.fontScale,
+                      lineHeight: settings.lineHeight,
+                      chineseConversion: settings.chineseConversion,
+                      contentPadding: EdgeInsets.fromLTRB(
+                        LanghuanTheme.spaceLg,
+                        topPadding + LanghuanTheme.spaceMd,
+                        LanghuanTheme.spaceLg,
+                        LanghuanTheme.spaceLg,
+                      ),
+                      onParagraphLongPress: _onParagraphLongPress,
+                      selectedChapterId: _screenController.selection?.chapterId,
+                      selectedParagraphId:
+                          _screenController.selection?.paragraphId,
                     ),
-                    onParagraphLongPress: _onParagraphLongPress,
-                    selectedChapterId: _selection?.chapterId,
-                    selectedParagraphId: _selection?.paragraphId,
-                  ),
                   ),
                 ),
-                if (_selection != null)
-                  _buildSelectionToolbar(readerTheme),
-                _buildTopBarOverlay(
-                  readerTheme: readerTheme,
+                if (_screenController.selection != null)
+                  ReaderSelectionOverlay(
+                    selection: _screenController.selection!,
+                    theme: readerTheme,
+                    l10n: l10n,
+                    onAddBookmark: () {
+                      final sel = _screenController.selection;
+                      if (sel == null) return;
+                      _actions.addBookmark(sel);
+                      _clearSelection();
+                    },
+                  ),
+                ReaderTopOverlay(
+                  showControls: _screenController.showControls,
+                  theme: readerTheme,
                   topPadding: topPadding,
                   chapterTitle: chapterTitle,
-                  activeChapterId: effectiveChapterId,
                   l10n: l10n,
+                  isRefreshing: _screenController.isRefreshingChapter,
+                  onBack: () => Navigator.of(context).pop(),
+                  onOpenBookmarks: _actions.openBookmarkSheet,
+                  onRefresh: () {
+                    _screenController.refreshCurrentChapter(effectiveChapterId);
+                  },
                 ),
-                _buildBottomBarOverlay(
-                  readerTheme: readerTheme,
-                  currentIdx: currentIdx,
+                ReaderBottomOverlay(
+                  showControls: _screenController.showControls,
+                  chapters: _screenController.chapters,
+                  currentIndex: currentIdx,
+                  isSwitchingChapter: _screenController.isRefreshingChapter,
+                  onPrevious: () {
+                    if (currentIdx > 0) {
+                      _actions.jumpToChapter(
+                        _screenController.chapters[currentIdx - 1].id,
+                      );
+                    }
+                  },
+                  onNext: () {
+                    if (currentIdx < _screenController.chapters.length - 1) {
+                      _actions.jumpToChapter(
+                        _screenController.chapters[currentIdx + 1].id,
+                      );
+                    }
+                  },
+                  onOpenToc: _actions.openTocSheet,
+                  onOpenInterface: _actions.openInterfaceSheet,
+                  onOpenSettings: _actions.openSettingsSheet,
                 ),
               ],
             ),

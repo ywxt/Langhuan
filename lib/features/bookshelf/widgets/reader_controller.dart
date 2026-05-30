@@ -8,12 +8,15 @@ class ReaderPosition {
   const ReaderPosition({
     required this.chapterId,
     required this.paragraphId,
-    this.offset = 0,
+    this.paragraphOffset = 0,
   });
 
   final String chapterId;
   final String paragraphId;
-  final double offset;
+  final double paragraphOffset;
+
+  // Backward-compatible alias for older call sites.
+  double get offset => paragraphOffset;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -33,27 +36,28 @@ class ReaderController extends ChangeNotifier {
 
   String? _pendingChapterId;
   String _pendingParagraphId = '';
-  double _pendingOffset = 0;
+  double _pendingParagraphOffset = 0;
 
   String? get pendingChapterId => _pendingChapterId;
   String get pendingParagraphId => _pendingParagraphId;
-  double get pendingOffset => _pendingOffset;
+  double get pendingParagraphOffset => _pendingParagraphOffset;
+  double get pendingOffset => _pendingParagraphOffset;
 
   void jumpTo({
     required String chapterId,
     String paragraphId = '',
-    double offset = 0,
+    double paragraphOffset = 0,
   }) {
     _pendingChapterId = chapterId;
     _pendingParagraphId = paragraphId;
-    _pendingOffset = offset;
+    _pendingParagraphOffset = paragraphOffset;
     notifyListeners();
   }
 
   void consumeJump() {
     _pendingChapterId = null;
     _pendingParagraphId = '';
-    _pendingOffset = 0;
+    _pendingParagraphOffset = 0;
   }
 
   // ─ Position reporting (content manager → parent) ───────────────────────
@@ -65,12 +69,14 @@ class ReaderController extends ChangeNotifier {
   void reportPosition({
     required String chapterId,
     required String paragraphId,
-    double offset = 0,
+    double paragraphOffset = 0,
   }) {
-    onPositionChanged?.call(ReaderPosition(
-      chapterId: chapterId,
-      paragraphId: paragraphId,
-      offset: offset,
-    ));
+    onPositionChanged?.call(
+      ReaderPosition(
+        chapterId: chapterId,
+        paragraphId: paragraphId,
+        paragraphOffset: paragraphOffset,
+      ),
+    );
   }
 }
