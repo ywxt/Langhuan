@@ -612,9 +612,9 @@ class _ChapterContentManagerState extends State<ChapterContentManager> {
               (_hCenterPages.isEmpty ? 0 : _hCenterPages.length - 1) &&
           _isLast,
       fontScale: widget.fontScale,
-        fontFamily: widget.fontFamily,
-        letterSpacing: widget.letterSpacing,
-        paragraphSpacing: widget.paragraphSpacing,
+      fontFamily: widget.fontFamily,
+      letterSpacing: widget.letterSpacing,
+      paragraphSpacing: widget.paragraphSpacing,
       lineHeight: widget.lineHeight,
       contentPadding: widget.contentPadding,
       onNextPage: _onHorizontalNextPage,

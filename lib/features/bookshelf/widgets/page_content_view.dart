@@ -26,7 +26,12 @@ class PageContentView extends StatelessWidget {
   final double paragraphSpacing;
   final double lineHeight;
   final String? selectedParagraphId;
-  final void Function(String paragraphId, ParagraphContent paragraph, Rect globalRect)? onParagraphLongPress;
+  final void Function(
+    String paragraphId,
+    ParagraphContent paragraph,
+    Rect globalRect,
+  )?
+  onParagraphLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -76,13 +81,17 @@ class PageContentView extends StatelessWidget {
     return child;
   }
 
-  Widget _buildContent(BuildContext context, ThemeData theme, PageItem item, ParagraphContent source) {
+  Widget _buildContent(
+    BuildContext context,
+    ThemeData theme,
+    PageItem item,
+    ParagraphContent source,
+  ) {
     if (source is ParagraphContent_Title) {
       return Text(
         source.text,
         style: theme.textTheme.headlineSmall?.copyWith(
-          fontSize:
-              (theme.textTheme.headlineSmall?.fontSize ?? 24) * fontScale,
+          fontSize: (theme.textTheme.headlineSmall?.fontSize ?? 24) * fontScale,
           fontFamily: fontFamily,
           letterSpacing: letterSpacing,
         ),

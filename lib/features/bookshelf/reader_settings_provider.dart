@@ -77,11 +77,11 @@ class ReaderSettingsState {
       fontScale: fontScale ?? this.fontScale,
       fontFamily: fontFamily != null ? fontFamily() : this.fontFamily,
       customFontFilePath: customFontFilePath != null
-        ? customFontFilePath()
-        : this.customFontFilePath,
+          ? customFontFilePath()
+          : this.customFontFilePath,
       customFontDisplayName: customFontDisplayName != null
-        ? customFontDisplayName()
-        : this.customFontDisplayName,
+          ? customFontDisplayName()
+          : this.customFontDisplayName,
       letterSpacing: letterSpacing ?? this.letterSpacing,
       paragraphSpacing: paragraphSpacing ?? this.paragraphSpacing,
       lineHeight: lineHeight ?? this.lineHeight,
@@ -116,9 +116,8 @@ class ReaderSettingsNotifier extends Notifier<ReaderSettingsState> {
   void setFontFamily(String? fontFamily) {
     final normalized = fontFamily?.trim();
     state = state.copyWith(
-      fontFamily: () => (normalized == null || normalized.isEmpty)
-          ? null
-          : normalized,
+      fontFamily: () =>
+          (normalized == null || normalized.isEmpty) ? null : normalized,
       customFontFilePath: () => null,
       customFontDisplayName: () => null,
     );
@@ -129,7 +128,10 @@ class ReaderSettingsNotifier extends Notifier<ReaderSettingsState> {
     await _loadFontFromFile(filePath, persist: true);
   }
 
-  Future<void> _loadFontFromFile(String filePath, {required bool persist}) async {
+  Future<void> _loadFontFromFile(
+    String filePath, {
+    required bool persist,
+  }) async {
     final trimmed = filePath.trim();
     if (trimmed.isEmpty) return;
 
@@ -206,11 +208,17 @@ class ReaderSettingsNotifier extends Notifier<ReaderSettingsState> {
       1.8,
     );
     final letterSpacing =
-        (prefs.getDouble(_kLetterSpacing) ?? state.letterSpacing).clamp(0.0, 4.0);
-    final paragraphSpacing = (prefs.getDouble(_kParagraphSpacing) ?? state.paragraphSpacing)
-        .clamp(4.0, 32.0);
-    final lineHeight =
-        (prefs.getDouble(_kLineHeight) ?? state.lineHeight).clamp(1.2, 2.4);
+        (prefs.getDouble(_kLetterSpacing) ?? state.letterSpacing).clamp(
+          0.0,
+          4.0,
+        );
+    final paragraphSpacing =
+        (prefs.getDouble(_kParagraphSpacing) ?? state.paragraphSpacing).clamp(
+          4.0,
+          32.0,
+        );
+    final lineHeight = (prefs.getDouble(_kLineHeight) ?? state.lineHeight)
+        .clamp(1.2, 2.4);
 
     final themeIndex = prefs.getInt(_kThemeMode);
     final conversionIndex = prefs.getInt(_kChineseConversion);

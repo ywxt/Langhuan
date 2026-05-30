@@ -32,68 +32,68 @@ class ParagraphView extends StatelessWidget {
 
     final child = switch (paragraph) {
       ParagraphContent_Title(:final text) => Text(
-          text,
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontSize:
-                (theme.textTheme.headlineSmall?.fontSize ?? 24) * fontScale,
-            fontFamily: fontFamily,
-            letterSpacing: letterSpacing,
-          ),
-          textAlign: TextAlign.center,
+        text,
+        style: theme.textTheme.headlineSmall?.copyWith(
+          fontSize: (theme.textTheme.headlineSmall?.fontSize ?? 24) * fontScale,
+          fontFamily: fontFamily,
+          letterSpacing: letterSpacing,
         ),
+        textAlign: TextAlign.center,
+      ),
       ParagraphContent_Text(:final content) => Text(
-          content,
-          style: theme.textTheme.bodyLarge?.copyWith(
-            fontSize:
-                (theme.textTheme.bodyLarge?.fontSize ?? 16) * fontScale,
-            fontFamily: fontFamily,
-            letterSpacing: letterSpacing,
-            height: lineHeight,
-          ),
+        content,
+        style: theme.textTheme.bodyLarge?.copyWith(
+          fontSize: (theme.textTheme.bodyLarge?.fontSize ?? 16) * fontScale,
+          fontFamily: fontFamily,
+          letterSpacing: letterSpacing,
+          height: lineHeight,
         ),
+      ),
       ParagraphContent_Image(:final url, :final alt) => Builder(
-          builder: (context) {
-            final screenWidth = MediaQuery.sizeOf(context).width;
-            final dpr = MediaQuery.devicePixelRatioOf(context);
-            final cacheWidth = (screenWidth * dpr).round();
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ClipRRect(
-                  borderRadius: LanghuanTheme.borderRadiusMd,
-                  child: Image.network(
-                    url,
-                    fit: BoxFit.cover,
-                    cacheWidth: cacheWidth,
-                    loadingBuilder: (context, child, progress) {
-                      if (progress == null) return child;
-                      return const AspectRatio(
-                        aspectRatio: 16 / 9,
-                        child: Center(child: CircularProgressIndicator()),
-                      );
-                    },
-                    errorBuilder: (_, _, _) => const AspectRatio(
+        builder: (context) {
+          final screenWidth = MediaQuery.sizeOf(context).width;
+          final dpr = MediaQuery.devicePixelRatioOf(context);
+          final cacheWidth = (screenWidth * dpr).round();
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ClipRRect(
+                borderRadius: LanghuanTheme.borderRadiusMd,
+                child: Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  cacheWidth: cacheWidth,
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return const AspectRatio(
                       aspectRatio: 16 / 9,
-                      child: Center(child: Icon(Icons.broken_image_outlined)),
-                    ),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  },
+                  errorBuilder: (_, _, _) => const AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Center(child: Icon(Icons.broken_image_outlined)),
                   ),
                 ),
-                if (alt != null && alt.isNotEmpty)
-                  Padding(
-                    padding: EdgeInsets.only(top: paragraphSpacing.clamp(4.0, 32.0)),
-                    child: Text(
-                      alt,
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
+              ),
+              if (alt != null && alt.isNotEmpty)
+                Padding(
+                  padding: EdgeInsets.only(
+                    top: paragraphSpacing.clamp(4.0, 32.0),
                   ),
-              ],
-            );
-          },
-        ),
+                  child: Text(
+                    alt,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
     };
 
     Widget result = child;
