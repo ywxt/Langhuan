@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use langhuan::transform::TransformChain;
 use langhuan::transform::dedup_title::DedupTitleTransform;
 use langhuan::transform::opencc::{ConversionMode, OpenCcTransform};
+use langhuan::transform::text_indent::TextIndentTransform;
 use messages::prelude::{Actor, Context, Handler};
 
 use crate::api::types::ChineseConversionMode;
@@ -75,6 +76,7 @@ impl Handler<BuildTransformChain> for ConversionActor {
     async fn handle(&mut self, _msg: BuildTransformChain, _: &Context<Self>) -> Self::Result {
         let mut chain = TransformChain::new();
         chain.push(Box::new(DedupTitleTransform::new()));
+        chain.push(Box::new(TextIndentTransform::new()));
         if self.mode != ConversionMode::None {
             chain.push(Box::new(OpenCcTransform::new(self.mode)));
         }
